@@ -63,7 +63,7 @@ pub struct ASIOTime {				// both input/output
 
 pub struct ASIOCallbacks
 {
-	pub buffer_switch: extern fn(double_buffer_index: i32, direct_process: i32),
+	pub buffer_switch: extern fn(double_buffer_index: i32, direct_process: ASIOBool),
 		// bufferSwitch indicates that both input and output are to be processed.
 		// the current buffer half index (0 for A, 1 for B) determines
 		// - the output buffer that the host should start to fill. the other buffer
@@ -89,15 +89,15 @@ pub struct ASIOCallbacks
 		// generic callback for various purposes, see selectors below.
 		// note this is only present if the asio version is 2 or higher
 
-	pub buffer_switch_time_info: extern  fn(params: *const ASIOTime, double_buffer_index: i32, direct_process: i32)
+	pub buffer_switch_time_info: extern fn(params: *const ASIOTime, double_buffer_index: i32, direct_process: ASIOBool)
 		// new callback with time info. makes ASIOGetSamplePosition() and various
 		// calls to ASIOGetSampleRate obsolete,
 		// and allows for timecode sync etc. to be preferred; will be used if
 		// the driver calls asioMessage with selector kAsioSupportsTimeInfo.
 }
 
-type ASIOBool = i32;
-type ASIOError = i32;
+pub type ASIOBool = i32;
+pub type ASIOError = i32;
 
 com::interfaces! {
     #[uuid("00000000-0000-0000-C000-000000000046")]

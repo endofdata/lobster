@@ -1,6 +1,8 @@
 mod asio_core;
 
-use std::iter;
+//use std::iter;
+use std::thread;
+use std::time::Duration;
 
 fn main() {
 	//com::runtime::init_runtime()
@@ -57,6 +59,27 @@ fn main() {
 				
 				println!("Driver name: '{}'", name);
 
+				let sample_rate = 48000.0f64;
+
+				match device.can_sample_rate(sample_rate) {
+					0 => println!("Sample rate {} is promised", sample_rate),
+					_ => panic!("Desired sample rate is not supported")
+				};
+
+				match device.set_sample_rate(sample_rate) {
+					0 => println!("Sample rate {} is set", sample_rate),
+					_ => panic!("Cannot set desired sample rate")
+				};
+
+				let mut effective_sample_rate = 0f64;
+
+				device.get_sample_rate(&mut effective_sample_rate);
+				
+				match effective_sample_rate == sample_rate
+				{
+					true => println!("Sample rate {} is confirmed", sample_rate),
+					_ => panic!("Desired sample rate is not confirmed")
+				};
 
 				let mut num_input_channels: i32 = 0;
 				let mut num_output_channels: i32 = 0;
@@ -76,20 +99,52 @@ fn main() {
 					_ => panic!("Failed to get buffer size information")
 				};
 
-
-				let sample_rate = 48000.0f64;
-
-				match device.can_sample_rate(sample_rate) {
-					0 => println!("Sample rate {} is accepted", sample_rate),
-					_ => panic!("Cannot use desired sample rate")
-				};
-
 				let callbacks = asio_core::ASIOCallbacks {
 					buffer_switch: cb_buffer_switch,
 					sample_rate_did_change: cb_sample_rate_did_change,
 					asio_message: cb_asio_message,
 					buffer_switch_time_info: cb_buffer_switch_time_info
 				};
+
+				let mut buffer_infos: [asio_core::ASIOBufferInfo; 4] = [
+					asio_core::ASIOBufferInfo {
+						channel_num: 0,
+						is_input: 1,
+						buffers: [core::ptr::null_mut::<()>(); 2]
+					},
+					asio_core::ASIOBufferInfo {
+						channel_num: 1,
+						is_input: 1,
+						buffers: [core::ptr::null_mut::<()>(); 2]
+					},
+					asio_core::ASIOBufferInfo {
+						channel_num: 0,
+						is_input: 0,
+						buffers: [core::ptr::null_mut::<()>(); 2]
+					},
+					asio_core::ASIOBufferInfo {
+						channel_num: 1,
+						is_input: 0,
+						buffers: [core::ptr::null_mut::<()>(); 2]
+					},
+				];
+
+				match device.create_buffers(buffer_infos.as_mut_ptr(), buffer_infos.len() as i32, pref_buffer_size, &callbacks) {
+					0 => println!("Created two input and two output buffers of {} bytes", pref_buffer_size),
+					_ => panic!("Failed to create ASIO buffers")
+				};
+
+				device.start();
+
+				println!("ASIO Device started");
+
+				thread::sleep(Duration::from_secs(5));
+	
+				device.stop();
+				
+				println!("ASIO device stopped");
+
+				println!("Received {} ASIO buffer switches", BUFFER_COUNT);
 			}
 			
 		}
@@ -100,16 +155,22 @@ fn main() {
 	}
 }
 
-extern "C" fn cb_buffer_switch(double_buffer_index: i32, direct_process: i32) {
+static mut BUFFER_COUNT: u32 = 0;
+
+extern "C" fn cb_buffer_switch(double_buffer_index: i32, direct_process: asio_core::ASIOBool) {
+	cb_buffer_switch_time_info(core::ptr::null::<asio_core::ASIOTime>(), double_buffer_index, direct_process);
 }
 
-extern "C" fn cb_sample_rate_did_change(sample_rate: f64) {
+extern "C" fn cb_sample_rate_did_change(_sample_rate: f64) {
 }
 
-extern "C" fn cb_asio_message(selector: i32, value: i32, message: *const (), opt: *const f64) {
+extern "C" fn cb_asio_message(_selector: i32, _value: i32, _message: *const (), _opt: *const f64) {
 }
 
-extern "C" fn cb_buffer_switch_time_info(params: *const asio_core::ASIOTime, double_buffer_index: i32, direct_process: i32) {
+extern "C" fn cb_buffer_switch_time_info(_params: *const asio_core::ASIOTime, _double_buffer_index: i32, _direct_process: asio_core::ASIOBool) {
+	unsafe {
+		BUFFER_COUNT = BUFFER_COUNT + 1;
+	}
 }
 
 
