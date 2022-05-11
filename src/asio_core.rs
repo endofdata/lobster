@@ -2,9 +2,21 @@ use com::sys::{
     CoCreateInstance, CLSCTX_INPROC_SERVER, CLSID, FAILED, HRESULT, IID,
 };
 
+use std::fmt;
 use core::ffi::c_void;
 
-pub struct ASIODriverInfo {
+#[repr(i32)]
+#[derive(Copy, Clone, Debug)]
+pub enum ASIOBool {
+	False = 0,
+	True = 1
+}
+
+pub type ASIOError = i32;
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct DriverInfo {
 	pub asio_version : i32,			// currently, 2
 	pub driver_version : i32,		// driver specific
 	pub name: [u8; 32],
@@ -13,15 +25,46 @@ pub struct ASIODriverInfo {
 									// (Windows: application main window handle, Mac & SGI: 0)
 }
 
-pub struct ASIOClockSource {
-	pub index: i32,					// as used for ASIOSetClockSource()
-	pub associated_channel: i32,	// for instance, S/PDIF or AES/EBU
-	pub associated_group: i32,		// see channel groups (ASIOGetChannelInfo())
-	pub is_current_source: i32,		// ASIOTrue if this is the current clock source
-	pub name: [u8; 32]				// for user selection
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ClockSource {
+	pub index: i32,						// as used for ASIOSetClockSource()
+	pub associated_channel: i32,		// for instance, S/PDIF or AES/EBU
+	pub associated_group: i32,			// see channel groups (ASIOGetChannelInfo())
+	pub is_current_source: ASIOBool,	// ASIOTrue if this is the current clock source
+	pub name: [u8; 32]					// for user selection
 }
 
-pub struct ASIOChannelInfo {
+impl ClockSource {
+	pub const fn new() -> ClockSource {
+		ClockSource {
+			index: 0,
+			associated_channel: 0,
+			associated_group: 0,
+			is_current_source: ASIOBool::False,
+			name: [0u8; 32]
+		}
+	}
+}
+
+impl fmt::Debug for ClockSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let trimmed_vec = self.name.iter().take_while(|c| **c != 0u8).cloned().collect();
+		let name = String::from_utf8(trimmed_vec).expect("ClockSource.name is utf-8");
+
+		f.debug_struct("ClockSource")
+			.field("index", &self.index)
+			.field("associated_channel", &self.associated_channel)
+			.field("associated_group", &self.associated_group)
+			.field("is_current_source", &self.is_current_source)
+			.field("name", &name)
+			.finish()
+	}
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ChannelInfo {
 	pub channel: i32,				// on input, channel index
 	pub is_input: i32,				// on input
 	pub is_active: i32,				// on exit
@@ -30,38 +73,141 @@ pub struct ASIOChannelInfo {
 	pub name: [u8; 32]				// dto
 }
 
-pub struct ASIOBufferInfo {
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct BufferInfo {
 	pub is_input: i32,				// on input:  ASIOTrue: input, else output
 	pub channel_num: i32,			// on input:  channel index
 	pub buffers: [*mut (); 2]		// on output: double buffer addresses
 }
 
-pub struct AsioTimeInfo {
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum TimeInfoFlags
+{
+	None				   = 0,
+	SystemTimeValid        = 1,            // must always be valid
+	SamplePositionValid    = 1 << 1,       // must always be valid
+	SampleRateValid        = 1 << 2,
+	SpeedValid             = 1 << 3,
+	
+	SampleRateChanged      = 1 << 4,
+	ClockSourceChanged     = 1 << 5
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct TimeInfo {
 	pub speed: f64,					// absolute speed (1. = nominal)
 	pub system_time: i64,			// system time related to samplePosition, in nanoseconds
 									// on mac, must be derived from Microseconds() (not UpTime()!)
 									// on windows, must be derived from timeGetTime()
 	pub sample_position: i64,
 	pub sample_rate: f64,           // current rate
-	pub flags: u32,					// (see below)
+	pub flags: TimeInfoFlags,	// (see above)
 	pub reserved: [u8; 12]
 }
 
-pub struct ASIOTimeCode {       
+impl TimeInfo {
+	pub const fn new() -> TimeInfo {
+		TimeInfo {
+			speed: 0.0,
+			system_time: 0,
+			sample_position: 0,
+			sample_rate: 0.0,
+			flags: TimeInfoFlags::None,
+			reserved: [0u8; 12]
+		}
+	}
+}
+
+impl fmt::Debug for TimeInfo {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("TimeInfo")
+			.field("speed", &self.speed)
+			.field("system_time", &self.system_time)
+			.field("sample_position", &self.sample_position)
+			.field("sample_rate", &self.sample_rate)
+			.field("flags", &(self.flags as i32))
+			.finish()
+	}
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum TimeCodeFlags
+{
+	None				   = 0,
+	TcValid                = 1,
+	TcRunning              = 1 << 1,
+	TcReverse              = 1 << 2,
+	TcOnspeed              = 1 << 3,
+	TcStill                = 1 << 4,
+	
+	TcSpeedValid           = 1 << 8
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct TimeCode {       
 	pub speed: f64,					// speed relation (fraction of nominal speed)
 									// optional; set to 0. or 1. if not supported
 	pub time_code_samples: i64,		// time in samples
-	pub flags: u32,					// some information flags (see below)
+	pub flags: TimeCodeFlags,		// some information flags (see above)
 	pub future: [u8; 64]
 }
 
-pub struct ASIOTime {				// both input/output
-	pub reserved: [i32; 4],			// must be 0
-	pub time_info: AsioTimeInfo,	// required
-	pub time_code: ASIOTimeCode		// optional, evaluated if (timeCode.flags & kTcValid)
+impl TimeCode {
+	pub const fn new() -> TimeCode {
+		TimeCode {
+			speed: 0.0,
+			time_code_samples: 0,
+			flags: TimeCodeFlags::None,
+			future: [0u8; 64]
+		}
+	}
 }
 
-pub struct ASIOCallbacks
+impl fmt::Debug for TimeCode {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("TimeCode")
+			.field("speed", &self.speed)
+			.field("time_code_samples", &self.time_code_samples)
+			.field("flags", &(self.flags as i32))
+			.finish()
+	}
+}
+
+#[repr(C)]
+#[derive(Clone)]
+pub struct Time {					// both input/output
+	pub reserved: [i32; 4],			// must be 0
+	pub time_info: TimeInfo,		// required
+	pub time_code: TimeCode			// optional, evaluated if (timeCode.flags & kTcValid)
+}
+
+impl Time {
+	pub const fn new() -> Time {
+		Time {
+			reserved: [0; 4],
+			time_info: TimeInfo::new(),
+			time_code: TimeCode::new()
+		}
+	}
+}
+
+
+impl fmt::Debug for Time {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Time")
+			.field("time_info", &self.time_info)
+			.field("time_code", &self.time_code)
+			.finish()
+	}
+}
+
+#[repr(C)]
+pub struct Callbacks
 {
 	pub buffer_switch: extern fn(double_buffer_index: i32, direct_process: ASIOBool),
 		// bufferSwitch indicates that both input and output are to be processed.
@@ -89,15 +235,13 @@ pub struct ASIOCallbacks
 		// generic callback for various purposes, see selectors below.
 		// note this is only present if the asio version is 2 or higher
 
-	pub buffer_switch_time_info: extern fn(params: *const ASIOTime, double_buffer_index: i32, direct_process: ASIOBool)
+	pub buffer_switch_time_info: extern fn(params: *const Time, double_buffer_index: i32, direct_process: ASIOBool)
 		// new callback with time info. makes ASIOGetSamplePosition() and various
 		// calls to ASIOGetSampleRate obsolete,
 		// and allows for timecode sync etc. to be preferred; will be used if
 		// the driver calls asioMessage with selector kAsioSupportsTimeInfo.
 }
 
-pub type ASIOBool = i32;
-pub type ASIOError = i32;
 
 com::interfaces! {
     #[uuid("00000000-0000-0000-C000-000000000046")]
@@ -122,11 +266,11 @@ com::interfaces! {
 		pub fn can_sample_rate(&self, sample_rate: f64) -> ASIOError;
 		pub fn get_sample_rate(&self, sample_rate: *mut f64) -> ASIOError;
 		pub fn set_sample_rate(&self, sample_rate: f64) -> ASIOError;
-		pub fn get_clock_sources(&self, clocks: *mut ASIOClockSource, num_sources: *mut i32) -> ASIOError;
+		pub fn get_clock_sources(&self, clocks: *mut ClockSource, num_sources: *mut i32) -> ASIOError;
 		pub fn set_clock_source(&self, reference: i32) -> ASIOError;
 		pub fn get_sample_position(&self, sample_pos: *mut i64, time_stamp: *mut i64) -> ASIOError;
-		pub fn get_channel_info(&self, info: *mut ASIOChannelInfo) -> ASIOError;
-		pub fn create_buffers(&self, buffer_infos: *mut ASIOBufferInfo, num_channels: i32, buffer_size: i32, callbacks: *const ASIOCallbacks) -> ASIOError;
+		pub fn get_channel_info(&self, info: *mut ChannelInfo) -> ASIOError;
+		pub fn create_buffers(&self, buffer_infos: *mut BufferInfo, num_channels: i32, buffer_size: i32, callbacks: *const Callbacks) -> ASIOError;
 		pub fn dispose_buffers(&self) -> ASIOError;
 		pub fn control_panel(&self) -> ASIOError;
 		pub fn future(&self, sel: i32, opt: *mut ()) -> ASIOError;
