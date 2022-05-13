@@ -7,12 +7,27 @@ use core::ffi::c_void;
 
 #[repr(i32)]
 #[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
 pub enum ASIOBool {
 	False = 0,
 	True = 1
 }
 
-pub type ASIOError = i32;
+#[repr(i32)]
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+pub enum ASIOError {
+	Ok = 0,             	// This value will be returned whenever the call succeeded
+	Success = 0x3f4847a0,	// unique success return value for ASIOFuture calls
+	NotPresent = -1000, 	// hardware input or output is not present or available
+	HWMalfunction,      	// hardware is malfunctioning (can be returned by any ASIO function)
+	InvalidParameter,   	// input parameter invalid
+	InvalidMode,        	// hardware is in a bad mode or used in a bad mode
+	SPNotAdvancing,     	// hardware is not running when sample position is inquired
+	NoClock,            	// sample clock or rate cannot be determined or is not present
+	NoMemory            	// not enough memory for completing the request
+}
+
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -23,6 +38,108 @@ pub struct DriverInfo {
 	pub error_message: [u8; 124],
 	pub sys_ref: *const ()			// on input: system reference
 									// (Windows: application main window handle, Mac & SGI: 0)
+}
+
+#[repr(i32)]
+#[derive(Copy, Clone)]
+#[allow(dead_code)]
+pub enum MessageSelector
+{
+	SelectorSupported = 1,	// selector in <value>, returns 1L if supported,
+								// 0 otherwise
+    EngineVersion,			// returns engine (host) asio implementation version,
+								// 2 or higher
+	ResetRequest,			// request driver reset. if accepted, this
+								// will close the driver (ASIO_Exit() ) and
+								// re-open it again (ASIO_Init() etc). some
+								// drivers need to reconfigure for instance
+								// when the sample rate changes, or some basic
+								// changes have been made in ASIO_ControlPanel().
+								// returns 1L; note the request is merely passed
+								// to the application, there is no way to determine
+								// if it gets accepted at this time (but it usually
+								// will be).
+	BufferSizeChange,		// not yet supported, will currently always return 0L.
+								// for now, use kAsioResetRequest instead.
+								// once implemented, the new buffer size is expected
+								// in <value>, and on success returns 1L
+	ResyncRequest,			// the driver went out of sync, such that
+								// the timestamp is no longer valid. this
+								// is a request to re-start the engine and
+								// slave devices (sequencer). returns 1 for ok,
+								// 0 if not supported.
+	LatenciesChanged, 		// the drivers latencies have changed. The engine
+								// will refetch the latencies.
+	SupportsTimeInfo,		// if host returns true here, it will expect the
+								// callback bufferSwitchTimeInfo to be called instead
+								// of bufferSwitch
+	SupportsTimeCode,		// 
+	MMCCommand,			// unused - value: number of commands, message points to mmc commands
+	SupportsInputMonitor,	// kAsioSupportsXXX return 1 if host supports this
+	SupportsInputGain,     // unused and undefined
+	SupportsInputMeter,    // unused and undefined
+	SupportsOutputGain,    // unused and undefined
+	SupportsOutputMeter,   // unused and undefined
+	Overload,              // driver detected an overload
+
+	NumMessageSelectors
+}
+
+unsafe impl com::AbiTransferable for MessageSelector {
+    type Abi = Self;
+    fn get_abi(&self) -> Self::Abi {
+        *self
+    }
+    fn set_abi(&mut self) -> *mut Self::Abi {
+        self as *mut Self::Abi
+    }
+}
+
+
+#[repr(i32)]
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+pub enum FutureSelector
+{
+	EnableTimeCodeRead = 1,		// no arguments
+	DisableTimeCodeRead,		// no arguments
+	SetInputMonitor,			// ASIOInputMonitor* in params
+	Transport,					// ASIOTransportParameters* in params
+	SetInputGain,				// ASIOChannelControls* in params, apply gain
+	GetInputMeter,				// ASIOChannelControls* in params, fill meter
+	SetOutputGain,				// ASIOChannelControls* in params, apply gain
+	GetOutputMeter,				// ASIOChannelControls* in params, fill meter
+	CanInputMonitor,			// no arguments for kAsioCanXXX selectors
+	CanTimeInfo,
+	CanTimeCode,
+	CanTransport,
+	CanInputGain,
+	CanInputMeter,
+	CanOutputGain,
+	CanOutputMeter,
+	OptionalOne,
+	
+	//	DSD support
+	//	The following extensions are required to allow switching
+	//	and control of the DSD subsystem.
+	SetIoFormat					= 0x23111961,		/* ASIOIoFormat * in params.			*/
+	GetIoFormat					= 0x23111983,		/* ASIOIoFormat * in params.			*/
+	CanDoIoFormat				= 0x23112004,		/* ASIOIoFormat * in params.			*/
+	
+	// Extension for drop out detection
+	CanReportOverload			= 0x24042012,	/* return ASE_SUCCESS if driver can detect and report overloads */
+	
+	GetInternalBufferSamples	= 0x25042012	/* ASIOInternalBufferInfo * in params. Deliver size of driver internal buffering, return ASE_SUCCESS if supported */
+}
+
+unsafe impl com::AbiTransferable for FutureSelector {
+    type Abi = Self;
+    fn get_abi(&self) -> Self::Abi {
+        *self
+    }
+    fn set_abi(&mut self) -> *mut Self::Abi {
+        self as *mut Self::Abi
+    }
 }
 
 #[repr(C)]
@@ -231,11 +348,11 @@ pub struct Callbacks
 		// If sample rate is unknown, 0 is passed (for instance, clock loss
 		// when externally synchronized).
 
-	pub asio_message: extern fn(selector: i32, value: i32, message: *const (), opt: *const f64),
+	pub asio_message: extern fn(selector: MessageSelector, value: i32, message: *mut (), opt: *const f64) -> i32,
 		// generic callback for various purposes, see selectors below.
 		// note this is only present if the asio version is 2 or higher
 
-	pub buffer_switch_time_info: extern fn(params: *const Time, double_buffer_index: i32, direct_process: ASIOBool)
+	pub buffer_switch_time_info: extern fn(params: *const Time, double_buffer_index: i32, direct_process: ASIOBool) -> *const Time
 		// new callback with time info. makes ASIOGetSamplePosition() and various
 		// calls to ASIOGetSampleRate obsolete,
 		// and allows for timecode sync etc. to be preferred; will be used if
@@ -273,7 +390,7 @@ com::interfaces! {
 		pub fn create_buffers(&self, buffer_infos: *mut BufferInfo, num_channels: i32, buffer_size: i32, callbacks: *const Callbacks) -> ASIOError;
 		pub fn dispose_buffers(&self) -> ASIOError;
 		pub fn control_panel(&self) -> ASIOError;
-		pub fn future(&self, sel: i32, opt: *mut ()) -> ASIOError;
+		pub fn future(&self, selector: FutureSelector, opt: *mut ()) -> ASIOError;
 		pub fn output_ready(&self) -> ASIOError;
 	}
 }
