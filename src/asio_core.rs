@@ -28,6 +28,89 @@ pub enum ASIOError {
 	NoMemory            	// not enough memory for completing the request
 }
 
+#[repr(i32)]
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+pub enum ASIOSampleType {
+	Int16MSB   = 0,
+	Int24MSB   = 1,		// used for 20 bits as well
+	Int32MSB   = 2,
+	Float32MSB = 3,		// IEEE 754 32 bit float
+	Float64MSB = 4,		// IEEE 754 64 bit double float
+
+	// these are used for 32 bit data buffer, with different alignment of the data inside
+	// 32 bit PCI bus systems can be more easily used with these
+	Int32MSB16 = 8,		// 32 bit data with 16 bit alignment
+	Int32MSB18 = 9,		// 32 bit data with 18 bit alignment
+	Int32MSB20 = 10,		// 32 bit data with 20 bit alignment
+	Int32MSB24 = 11,		// 32 bit data with 24 bit alignment
+	
+	Int16LSB   = 16,
+	Int24LSB   = 17,		// used for 20 bits as well
+	Int32LSB   = 18,
+	Float32LSB = 19,		// IEEE 754 32 bit float, as found on Intel x86 architecture
+	Float64LSB = 20, 		// IEEE 754 64 bit double float, as found on Intel x86 architecture
+
+	// these are used for 32 bit data buffer, with different alignment of the data inside
+	// 32 bit PCI bus systems can more easily used with these
+	Int32LSB16 = 24,		// 32 bit data with 18 bit alignment
+	Int32LSB18 = 25,		// 32 bit data with 18 bit alignment
+	Int32LSB20 = 26,		// 32 bit data with 20 bit alignment
+	Int32LSB24 = 27,		// 32 bit data with 24 bit alignment
+
+	//	ASIO DSD format.
+	DSDInt8LSB1   = 32,		// DSD 1 bit data, 8 samples per byte. First sample in Least significant bit.
+	DSDInt8MSB1   = 33,		// DSD 1 bit data, 8 samples per byte. First sample in Most significant bit.
+	DSDInt8NER8	= 40,		// DSD 8 bit data, 1 sample per byte. No Endianness required.
+
+	LastEntry
+}
+
+impl ASIOSampleType {
+	pub fn size_in_bytes(&self) -> usize {
+		match self {
+			ASIOSampleType::Int16MSB   => 2,
+			ASIOSampleType::Int24MSB   => 3,		// used for 20 bits as well
+			ASIOSampleType::Int32MSB   => 4,
+			ASIOSampleType::Float32MSB => 4,		// IEEE 754 32 bit float
+			ASIOSampleType::Float64MSB => 8,		// IEEE 754 64 bit double float
+		
+			ASIOSampleType::Int32MSB16 => 4,		// 32 bit data with 16 bit alignment
+			ASIOSampleType::Int32MSB18 => 4,		// 32 bit data with 18 bit alignment
+			ASIOSampleType::Int32MSB20 => 4,		// 32 bit data with 20 bit alignment
+			ASIOSampleType::Int32MSB24 => 4,		// 32 bit data with 24 bit alignment
+			
+			ASIOSampleType::Int16LSB   => 2,
+			ASIOSampleType::Int24LSB   => 3,		// used for 20 bits as well
+			ASIOSampleType::Int32LSB   => 4,
+			ASIOSampleType::Float32LSB => 4,		// IEEE 754 32 bit float, as found on Intel x86 architecture
+			ASIOSampleType::Float64LSB => 8, 		// IEEE 754 64 bit double float, as found on Intel x86 architecture
+		
+			ASIOSampleType::Int32LSB16 => 2,		// 32 bit data with 18 bit alignment
+			ASIOSampleType::Int32LSB18 => 4,		// 32 bit data with 18 bit alignment
+			ASIOSampleType::Int32LSB20 => 4,		// 32 bit data with 20 bit alignment
+			ASIOSampleType::Int32LSB24 => 4,		// 32 bit data with 24 bit alignment
+		
+			//	ASIO DSD format.
+			ASIOSampleType::DSDInt8LSB1 => 1,		// DSD 1 bit data, 8 samples per byte. First sample in Least significant bit.
+			ASIOSampleType::DSDInt8MSB1 => 1,		// DSD 1 bit data, 8 samples per byte. First sample in Most significant bit.
+			ASIOSampleType::DSDInt8NER8	=> 1,		// DSD 8 bit data, 1 sample per byte. No Endianness required.
+			_ => panic!("Invalid sample type: '{:?}'", self)
+		}
+	}
+}
+
+#[allow(dead_code)]
+pub fn sample_count(sample_rate: f64, ms: f64) -> f64 {
+	(sample_rate * ms + 1.0) / 1000.0
+}
+
+#[allow(dead_code)]
+pub fn buffer_size(sample_rate: f64, ms: f64, sample_type: ASIOSampleType) -> i64 {
+	let sample_size = sample_type.size_in_bytes() as f64;
+
+	(sample_count(sample_rate, ms) * sample_size) as i64
+}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -182,12 +265,25 @@ impl fmt::Debug for ClockSource {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct ChannelInfo {
-	pub channel: i32,				// on input, channel index
-	pub is_input: i32,				// on input
-	pub is_active: i32,				// on exit
-	pub channel_group: i32,			// dto
-	pub sample_type: i32,			// dto
-	pub name: [u8; 32]				// dto
+	pub channel: i32,					// on input, channel index
+	pub is_input: ASIOBool,				// on input
+	pub is_active: ASIOBool,			// on exit
+	pub channel_group: i32,				// dto
+	pub sample_type: ASIOSampleType,	// dto
+	pub name: [u8; 32]					// dto
+}
+
+impl ChannelInfo {
+	pub const fn new() -> ChannelInfo {
+		ChannelInfo {
+			channel: 0,
+			is_input: ASIOBool::False,
+			is_active: ASIOBool::False,
+			channel_group: 0,
+			sample_type: ASIOSampleType::LastEntry,
+			name: [0u8; 32]
+		}
+	}
 }
 
 #[repr(C)]

@@ -83,8 +83,22 @@ fn main() {
 
 					match device.get_channels(&mut num_input_channels, &mut num_output_channels) {
 						ASIOError::Ok => println!("Channels: in({}) out({})", num_input_channels, num_output_channels),
-						_ => panic!("Failed to get channels information")
+						_ => panic!("Failed to get channel count information")
 					};
+
+					let mut channel_info = ChannelInfo::new();
+
+					match device.get_channel_info(&mut channel_info) {
+						ASIOError::Ok => println!("Channel {} (Input: {:?}) has sample type {:?}", channel_info.channel, channel_info.is_input, channel_info.sample_type),
+						_ => panic!("Failed to get channel description")
+					};
+
+					let converter = match channel_info.sample_type {
+						ASIOSampleType::Int32LSB => IntToFloatConverter::new()
+						_ => panic!("Sample type '{}' not supported.", channel_info.sample_type)
+					};
+
+					// TODO: make loop using the converter for reading/writing samples
 
 					let mut min_buffer_size = 0i32;
 					let mut max_buffer_size = 0i32;
@@ -171,12 +185,12 @@ fn main() {
 					// If we needed to make a void* from some value:
 					//let mut enable = 1; // ASIOBool::True;
 					//let void_ptr = core::ptr::addr_of_mut!(enable) as *mut ()
-					result = device.future(FutureSelector::EnableTimeCodeRead, core::ptr::null_mut::<()>());
-					match  result {
-						ASIOError::Ok => println!("Enabled time code read"),
-						ASIOError::NotPresent => println!("Time code read not supported"),
-						_ => panic!("Failed to enable time code read {:?}", result)
-					};
+					// result = device.future(FutureSelector::EnableTimeCodeRead, core::ptr::null_mut::<()>());
+					// match  result {
+					// 	ASIOError::Ok => println!("Enabled time code read"),
+					// 	ASIOError::NotPresent => println!("Time code read not supported"),
+					// 	_ => panic!("Failed to enable time code read {:?}", result)
+					// };
 					
 					device.start();
 
@@ -215,7 +229,6 @@ fn get_error_message(device: &IASIO) -> String {
 	String::from_utf8(trimmed)
 		.expect("Error message is valid UTF-8")
 }
-
 
 static mut BUFFER_COUNT: u32 = 0;
 
