@@ -161,7 +161,7 @@ fn main() {
 					};
 					
 					let output_buffer = match channel_info.sample_type{
-						ASIOSampleType::Int32LSB => SampleBufferFactory::create_input_i32(buffer_infos[2].buffers[0], pref_buffer_size as usize),
+						ASIOSampleType::Int32LSB => SampleBufferFactory::create_output_i32(buffer_infos[2].buffers[0], pref_buffer_size as usize),
 						_ => panic!("Unsupported sample type {:?}", channel_info.sample_type)
 					};
 
