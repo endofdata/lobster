@@ -3,6 +3,7 @@ mod asio_core;
 use std::thread;
 use std::time::Duration;
 use asio_core::*;
+use asio_core::sample_buffer::{ SampleBufferFactory, SampleInput, SampleOutput};
 
 fn main() {
 
@@ -93,13 +94,6 @@ fn main() {
 						_ => panic!("Failed to get channel description")
 					};
 
-					let converter = match channel_info.sample_type {
-						ASIOSampleType::Int32LSB => IntToFloatConverter::new()
-						_ => panic!("Sample type '{}' not supported.", channel_info.sample_type)
-					};
-
-					// TODO: make loop using the converter for reading/writing samples
-
 					let mut min_buffer_size = 0i32;
 					let mut max_buffer_size = 0i32;
 					let mut pref_buffer_size = 0i32;
@@ -135,22 +129,22 @@ fn main() {
 					let mut buffer_infos: [BufferInfo; 4] = [
 						BufferInfo {
 							channel_num: 0,
-							is_input: 1,
+							is_input: ASIOBool::True,
 							buffers: [core::ptr::null_mut::<()>(); 2]
 						},
 						BufferInfo {
 							channel_num: 1,
-							is_input: 1,
+							is_input: ASIOBool::True,
 							buffers: [core::ptr::null_mut::<()>(); 2]
 						},
 						BufferInfo {
 							channel_num: 0,
-							is_input: 0,
+							is_input: ASIOBool::False,
 							buffers: [core::ptr::null_mut::<()>(); 2]
 						},
 						BufferInfo {
 							channel_num: 1,
-							is_input: 0,
+							is_input: ASIOBool::False,
 							buffers: [core::ptr::null_mut::<()>(); 2]
 						},
 					];
@@ -160,6 +154,18 @@ fn main() {
 						ASIOError::Ok => println!("Created two input and two output buffers of {} bytes", pref_buffer_size),
 						_ => panic!("Failed to create ASIO buffers: {:?}", result)
 					};
+
+					let input_buffer = match channel_info.sample_type {
+						ASIOSampleType::Int32LSB => SampleBufferFactory::create_input_i32(buffer_infos[0].buffers[0], pref_buffer_size as usize),
+						_ => panic!("Unsupported sample type {:?}", channel_info.sample_type)
+					};
+					
+					let output_buffer = match channel_info.sample_type{
+						ASIOSampleType::Int32LSB => SampleBufferFactory::create_input_i32(buffer_infos[2].buffers[0], pref_buffer_size as usize),
+						_ => panic!("Unsupported sample type {:?}", channel_info.sample_type)
+					};
+
+					
 
 					let selectors = [
 						FutureSelector::CanInputMonitor,

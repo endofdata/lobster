@@ -1,3 +1,5 @@
+pub mod sample_buffer;
+
 use com::sys::{
     CoCreateInstance, CLSCTX_INPROC_SERVER, CLSID, FAILED, HRESULT, IID,
 };
@@ -289,9 +291,19 @@ impl ChannelInfo {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct BufferInfo {
-	pub is_input: i32,				// on input:  ASIOTrue: input, else output
+	pub is_input: ASIOBool,			// on input:  ASIOTrue: input, else output
 	pub channel_num: i32,			// on input:  channel index
 	pub buffers: [*mut (); 2]		// on output: double buffer addresses
+}
+
+impl BufferInfo {
+	pub fn new() -> BufferInfo {
+		BufferInfo {
+			is_input: ASIOBool::False,
+			channel_num: 0,
+			buffers: [core::ptr::null_mut::<()>(); 2]
+		}
+	}
 }
 
 #[repr(u32)]
