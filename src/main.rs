@@ -37,7 +37,7 @@ fn main() {
 		// 	_ => panic!("Failed to enable time code read {:?}", result)
 		// };
 
-		let device = asio_core::asio_device::ASIODevice::<i32>::new(clsid);
+		let mut device = asio_core::asio_device::ASIODevice::new(clsid);
 		
 		device.start();
 

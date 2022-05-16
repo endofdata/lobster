@@ -2,25 +2,25 @@
 use crate::asio_core::*;
 use crate::asio_core::sample_buffer::{ SampleBufferFactory, SampleInput, SampleOutput};
 
-pub enum HardwarePin<T> {
-	Input(Box<dyn SampleInput<Sample = T>>),
-	Output(Box<dyn SampleOutput<Sample = T>>)
+pub enum HardwarePin {
+	Input(Box<dyn SampleInput>),
+	Output(Box<dyn SampleOutput>)
 }
 
-pub struct Channel<T> {
+pub struct Channel {
 	name: String,
-	pin: HardwarePin<T>
+	pin: HardwarePin
 }
 
-pub struct ASIODevice<T> {
+pub struct ASIODevice {
 	iasio: IASIO,
 	driver_name: String,
-	input_channels: Vec<Channel<T>>,
-	output_channels: Vec<Channel<T>>
+	input_channels: Vec<Channel>,
+	output_channels: Vec<Channel>
 }
 
-impl<T> ASIODevice<T> {
-	pub fn new(clsid: com::CLSID) -> ASIODevice<T> {
+impl ASIODevice {
+	pub fn new(clsid: com::CLSID) -> ASIODevice {
 
 		let iasio = match create_device(&clsid) {
 			Ok(value) => value,
@@ -36,18 +36,21 @@ impl<T> ASIODevice<T> {
 		};
 
 		let driver_name : String;
-
+		
 		let driver_info_ptr: *mut DriverInfo = &mut driver_info;
-		match iasio.init(driver_info_ptr as *mut ()) {
-			ASIOBool::False => panic!("Driver initialization failed: {}", ASIODevice::get_error_message(&iasio)),
-			ASIOBool::True =>	{
-				let mut buffer = vec![0u8; 128];
-				let ptr = buffer.as_mut_ptr();
-				iasio.get_driver_name(ptr);
 
-				let trimmed : Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
-				driver_name = String::from_utf8(trimmed)
-					.expect("Driver name is valid UTF-8");
+		unsafe {
+			match iasio.init(driver_info_ptr as *mut ()) {
+				ASIOBool::False => panic!("Driver initialization failed: {}", ASIODevice::get_error_message(&iasio)),
+				ASIOBool::True =>	{
+					let mut buffer = vec![0u8; 128];
+					let ptr = buffer.as_mut_ptr();
+					iasio.get_driver_name(ptr);
+
+					let trimmed : Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
+					driver_name = String::from_utf8(trimmed)
+						.expect("Driver name is valid UTF-8");
+				}
 			}
 		}
 
@@ -56,8 +59,10 @@ impl<T> ASIODevice<T> {
 		let mut pref_buffer_size = 0i32;
 		let mut granularity = 0i32;
 
-		if iasio.get_buffer_size(&mut min_buffer_size, &mut max_buffer_size, &mut pref_buffer_size, &mut granularity) != ASIOError::Ok {
-			panic!("Failed to get buffer size information")
+		unsafe {
+			if iasio.get_buffer_size(&mut min_buffer_size, &mut max_buffer_size, &mut pref_buffer_size, &mut granularity) != ASIOError::Ok {
+				panic!("Failed to get buffer size information")
+			}
 		}
 
 		let callbacks = Callbacks {
@@ -90,53 +95,63 @@ impl<T> ASIODevice<T> {
 			},
 		];
 
-		let mut result = iasio.create_buffers(buffer_infos.as_mut_ptr(), buffer_infos.len() as i32, pref_buffer_size, &callbacks);
+		let result : ASIOError;
+		
+		unsafe {
+			result = iasio.create_buffers(buffer_infos.as_mut_ptr(), buffer_infos.len() as i32, pref_buffer_size, &callbacks);
+		}
 
 		match result {
 			ASIOError::Ok => 
 			{
 				let mut num_input_channels: i32 = 0;
 				let mut num_output_channels: i32 = 0;
-				
-				if iasio.get_channels(&mut num_input_channels, &mut num_output_channels) != ASIOError::Ok {
-					panic!("Failed to get channel count information")
+			
+				unsafe {
+					if iasio.get_channels(&mut num_input_channels, &mut num_output_channels) != ASIOError::Ok {
+						panic!("Failed to get channel count information")
+					}
 				}
-		
+
 				let mut channel_info = ChannelInfo::new();
-				let input_channels = Vec::<Channel<i32>>::new();
+				let mut input_channels = Vec::<Channel>::new();
 
 				// TODO: Is it OK we regard only buffers[0]? I think, buffer[1] was same pointer...
 
-				for index in (0..num_input_channels) {
+				for index in 0..num_input_channels {
 					channel_info.is_input = ASIOBool::True;
 					channel_info.channel = index;
-					if iasio.get_channel_info(&mut channel_info) != ASIOError::Ok {
-						panic!("Failed to get input channel description {}", index)
+					unsafe {
+						if iasio.get_channel_info(&mut channel_info) != ASIOError::Ok {
+							panic!("Failed to get input channel description {}", index)
+						}
 					}
-					if channel_info.sample_type != ASIOSampleType::Int32LSB {
-						panic!("Unsupported sample type {:?}", channel_info.sample_type);
-					}
-					input_channels.push(Channel {
-						name: String::from_utf8(channel_info.name.to_vec()).expect("Channel name is utf-8"),
-						pin: HardwarePin::Input(SampleBufferFactory::create_input_i32(buffer_infos[0].buffers[0], pref_buffer_size as usize))
-					});
+
+					let name = String::from_utf8(channel_info.name.to_vec()).expect("Channel name is utf-8");
+					let input = match channel_info.sample_type {
+						ASIOSampleType::Int32LSB => SampleBufferFactory::create_input_i32(buffer_infos[0].buffers[0], pref_buffer_size as usize),
+						_ => panic!("Unsupported sample type {:?}", channel_info.sample_type)
+					};
+					input_channels.push(Channel { name: name, pin: HardwarePin::Input(input) });
 				}
 		
-				let output_channels = Vec::<Channel<i32>>::new();
-		
-				for index in (0..num_output_channels) {
+				let mut output_channels = Vec::<Channel>::new();
+				
+				for index in 0..num_output_channels {
 					channel_info.is_input = ASIOBool::False;
 					channel_info.channel = index;
-					if iasio.get_channel_info(&mut channel_info) != ASIOError::Ok {
-						panic!("Failed to get output channel description {}", index)
+					unsafe {
+						if iasio.get_channel_info(&mut channel_info) != ASIOError::Ok {
+							panic!("Failed to get output channel description {}", index)
+						}
 					}
-					if channel_info.sample_type != ASIOSampleType::Int32LSB {
-						panic!("Unsupported sample type {:?}", channel_info.sample_type);
-					}
-					output_channels.push(Channel {
-						name: String::from_utf8(channel_info.name.to_vec()).expect("Channel name is utf-8"),
-						pin: HardwarePin::Output(SampleBufferFactory::create_output_i32(buffer_infos[(num_input_channels + index) as usize].buffers[0], pref_buffer_size as usize))
-					});
+
+					let name = String::from_utf8(channel_info.name.to_vec()).expect("Channel name is utf-8");
+					let output = match channel_info.sample_type {
+						ASIOSampleType::Int32LSB => SampleBufferFactory::create_output_i32(buffer_infos[input_channels.len() + index as usize].buffers[0], pref_buffer_size as usize),
+						_ => panic!("Unsupported sample type {:?}", channel_info.sample_type)
+					};
+					output_channels.push(Channel { name: name, pin: HardwarePin::Output(output) });
 				}
 
 				return ASIODevice {
@@ -153,34 +168,39 @@ impl<T> ASIODevice<T> {
 	}
 
 	pub fn set_sample_rate(&mut self, sample_rate: f64) -> bool {
-		if self.iasio.can_sample_rate(sample_rate) == ASIOError::Ok {
-			match self.iasio.set_sample_rate(sample_rate) {
-				ASIOError::Ok => println!("Sample rate {} is set", sample_rate),
-				_ => panic!("Cannot set desired sample rate")
-			};
-			
-			return self.get_sample_rate() == sample_rate;
-		}
-		else {
-			return false;
+		unsafe {
+			if self.iasio.can_sample_rate(sample_rate) == ASIOError::Ok {
+				match self.iasio.set_sample_rate(sample_rate) {
+					ASIOError::Ok => println!("Sample rate {} is set", sample_rate),
+					_ => panic!("Cannot set desired sample rate")
+				};
+				
+				return self.get_sample_rate() == sample_rate;
+			}
+			else {
+				return false;
+			}
 		}
 	}
 
 	pub fn get_sample_rate(&self) -> f64 {
 		let mut effective_sample_rate = 0f64;
-
-		self.iasio.get_sample_rate(&mut effective_sample_rate);
-
+		unsafe{
+			self.iasio.get_sample_rate(&mut effective_sample_rate);
+		}
 		effective_sample_rate
 	}
 
 	pub fn start(&mut self) {
-		self.iasio.start();
+		unsafe {
+			self.iasio.start();
+		}
 	}
 
 	pub fn stop(&mut self) {
-		self.iasio.stop();
-		println!("Received {} ASIO buffer switches", BUFFER_COUNT);
+		unsafe {
+			self.iasio.stop();
+		}
 	}
 
 	// pub fn get_features() {
