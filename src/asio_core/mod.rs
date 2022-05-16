@@ -1,4 +1,5 @@
 pub mod sample_buffer;
+pub mod asio_device;
 
 use com::sys::{
     CoCreateInstance, CLSCTX_INPROC_SERVER, CLSID, FAILED, HRESULT, IID,
@@ -8,7 +9,7 @@ use std::fmt;
 use core::ffi::c_void;
 
 #[repr(i32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum ASIOBool {
 	False = 0,
@@ -16,7 +17,7 @@ pub enum ASIOBool {
 }
 
 #[repr(i32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum ASIOError {
 	Ok = 0,             	// This value will be returned whenever the call succeeded
@@ -31,7 +32,7 @@ pub enum ASIOError {
 }
 
 #[repr(i32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum ASIOSampleType {
 	Int16MSB   = 0,
@@ -126,7 +127,7 @@ pub struct DriverInfo {
 }
 
 #[repr(i32)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum MessageSelector
 {
@@ -182,7 +183,7 @@ unsafe impl com::AbiTransferable for MessageSelector {
 
 
 #[repr(i32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum FutureSelector
 {
@@ -307,7 +308,7 @@ impl BufferInfo {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum TimeInfoFlags
 {
 	None				   = 0,
@@ -359,7 +360,7 @@ impl fmt::Debug for TimeInfo {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum TimeCodeFlags
 {
 	None				   = 0,
