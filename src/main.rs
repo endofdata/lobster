@@ -39,14 +39,32 @@ fn main() {
 
 		let mut device = asio_core::asio_device::ASIODevice::new(clsid);
 		
-		device.start();
+		println!("Created ASIO device '{}'", device.driver_name);
 
+		// println!("Input channel[0]: '{}'", device.input_channels[0].name);
+
+		// let recording = match &mut device.input_channels[0].pin {
+		// 	asio_core::asio_device::HardwarePin::Input(inp) => inp.read(false),
+		// 	_ => panic!("Expected input channel hardware pin")
+		// };
+
+		// println!("Output channel[0]: '{}'", device.output_channels[0].name);
+
+		// match &mut device.output_channels[0].pin {
+		// 	asio_core::asio_device::HardwarePin::Output(outp) => outp.write(recording, false),
+		// 	_ => panic!("Expected output channel hardware pin")
+		// };
+
+		device.set_sample_rate(sample_rate);
+
+		println!("ASIO device starting");
+		device.start();
 		println!("ASIO Device started");
 
 		thread::sleep(Duration::from_secs(2));
 
-		device.stop();
-		
+		println!("ASIO device stopping");
+		device.stop();		
 		println!("ASIO device stopped");
 	}
 

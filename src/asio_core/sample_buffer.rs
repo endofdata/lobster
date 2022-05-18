@@ -11,7 +11,7 @@ pub trait SampleInput {
 pub struct SampleBufferFactory {
 }
 
-impl<'a> SampleBufferFactory {
+impl SampleBufferFactory {
 	pub fn create_input_i32(ptr: *mut (), len: usize) -> Box<dyn SampleInput> {
 		Box::new(SampleBuffer::<i32>::new(ptr as *mut i32, len, true))
 	}
@@ -65,7 +65,6 @@ impl Iterator for SampleBuffer<i32> {
 
 impl SampleOutput for SampleBuffer<i32> {
 	fn write(&mut self, samples: &mut dyn Iterator<Item = f64>, auto_wrap: bool) {
-
 		for raw_sample in samples.map(|s| (s * MAX_I32_VALUE) as i32) {
 			unsafe {
 				self.raw_samples.offset(self.pos as isize).write(raw_sample);

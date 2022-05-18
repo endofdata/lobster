@@ -287,6 +287,13 @@ impl ChannelInfo {
 			name: [0u8; 32]
 		}
 	}
+
+	pub const fn new_for(is_input: ASIOBool, channel: i32) -> ChannelInfo {
+		let mut channel_info = ChannelInfo::new();
+		channel_info.channel = channel;
+		channel_info.is_input = is_input;
+		channel_info
+	}
 }
 
 #[repr(C)]
@@ -433,6 +440,7 @@ impl fmt::Debug for Time {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct Callbacks
 {
 	pub buffer_switch: extern fn(double_buffer_index: i32, direct_process: ASIOBool),
