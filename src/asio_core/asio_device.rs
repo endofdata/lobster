@@ -1,4 +1,3 @@
-//use crate::asio_core::{ ASIOBool, ASIOError, ASIOSampleType, create_device, IASIO, DriverInfo, ChannelInfo, BufferInfo, Time, MessageSelector, Callbacks };
 use crate::asio_core::*;
 use crate::asio_core::sample_buffer::{ SampleBufferFactory, SampleInput, SampleOutput};
 
@@ -243,18 +242,6 @@ impl ASIODevice {
 				panic!("Failed to create buffers: {:?}", result);
 			};
 		}
-
-		// for &info in &buffer_infos {
-		// 	println!("{:?} {} {:x} {:x}", info.is_input, info.channel_num, info.buffers[0] as usize, info.buffers[1] as usize);
-		// }
-
-		// let fred = buffer_infos.as_mut_ptr();
-		// unsafe {
-		// 	let lutz = fred.offset(1);
-		// 	let info : &BufferInfo = &*lutz;
-
-		// 	println!("{:?} {} {:x} {:x}", info.is_input, info.channel_num, info.buffers[0] as usize, info.buffers[1] as usize);
-		// }
 		buffer_infos
 	}
 }
