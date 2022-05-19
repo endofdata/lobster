@@ -16,8 +16,12 @@ pub struct ASIODevice {
 	#[allow(dead_code)]
 	callbacks: Box<Callbacks>,
 	pub driver_name: String,
-	pub input_channels: Vec<Channel>,
-	pub output_channels: Vec<Channel>
+	pub input_channels: Box<[Channel]>,
+	pub output_channels: Box<[Channel]>
+}
+
+// TODO: Really not sure if IASIO is sync safe?
+unsafe impl std::marker::Sync for ASIODevice {
 }
 
 impl ASIODevice {
@@ -57,8 +61,8 @@ impl ASIODevice {
 			iasio : iasio,
 			callbacks: callbacks,
 			driver_name : driver_name,
-			input_channels: input_channels,
-			output_channels: output_channels
+			input_channels: input_channels.into_boxed_slice(),
+			output_channels: output_channels.into_boxed_slice()
 		}	
 	}
 
@@ -244,14 +248,25 @@ impl ASIODevice {
 		}
 		buffer_infos
 	}
+
+	fn buffer_switch(&mut self, params: *const Time, _double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time {
+		params
+	}
 }
+
+static mut ACTIVE_DEVICE : Option<ASIODevice> = None;
 
 extern "C" fn cb_buffer_switch(double_buffer_index: i32, direct_process: ASIOBool) {
 	cb_buffer_switch_time_info(core::ptr::null::<Time>(), double_buffer_index, direct_process);
 }
 
 extern "C" fn cb_buffer_switch_time_info(_params: *const Time, _double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time {
-	_params
+	unsafe {		
+		match &mut ACTIVE_DEVICE {
+			Some(asio_device) => asio_device.buffer_switch(_params, _double_buffer_index, _direct_process),
+			None => _params
+		}
+	}
 }
 
 extern "C" fn cb_sample_rate_did_change(_sample_rate: f64) {
