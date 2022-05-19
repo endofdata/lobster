@@ -23,6 +23,7 @@ impl SampleBufferFactory {
 const MAX_I32_VALUE: f64 = 2147483647.0f64;
 
 struct SampleBuffer<T: Copy + Clone> {
+	#[allow(dead_code)]
 	is_input: bool,
 	raw_samples: *mut T,
 	len: usize,
@@ -77,7 +78,7 @@ impl SampleOutput for SampleBuffer<i32> {
 }
 
 impl SampleInput for SampleBuffer<i32> {
-	fn read(&mut self, auto_wrap: bool) -> &mut dyn Iterator<Item = f64> {		
+	fn read(&mut self, _auto_wrap: bool) -> &mut dyn Iterator<Item = f64> {		
 		self
 	}
 }
