@@ -25,7 +25,7 @@ unsafe impl std::marker::Sync for ASIODevice {
 }
 
 impl ASIODevice {
-	pub fn new(clsid: com::CLSID) -> ASIODevice {
+	fn new(clsid: com::CLSID) -> ASIODevice {
 
 		let iasio = match create_device(&clsid) {
 			Ok(value) => value,
@@ -57,13 +57,23 @@ impl ASIODevice {
 			output_channels.push(ASIODevice::get_channel(&iasio, ASIOBool::False, index, buffer_infos[(num_input_channels + index) as usize].buffers[0], pref_buffer_size));
 		}		
 
-		return ASIODevice {
+		ASIODevice {
 			iasio : iasio,
 			callbacks: callbacks,
 			driver_name : driver_name,
 			input_channels: input_channels.into_boxed_slice(),
 			output_channels: output_channels.into_boxed_slice()
-		}	
+		}
+	}
+
+	pub fn set_active_device(clsid: com::CLSID) -> &'static ASIODevice {
+		let device = ASIODevice::new(clsid);
+
+		unsafe {
+			ACTIVE_DEVICE = Some(device);
+			let fred = &ACTIVE_DEVICE.unwrap();
+			fred
+		}
 	}
 
 	pub fn set_sample_rate(&mut self, sample_rate: f64) -> bool {
