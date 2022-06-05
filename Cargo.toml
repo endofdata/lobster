@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 com = "0.6.0"
+com_macros = "0.6.0"
 
 #[dependencies.windows]
 #version = "0.36.1"

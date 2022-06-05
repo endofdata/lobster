@@ -38,6 +38,7 @@ name = "lobster"
 version = "0.1.0"
 dependencies = [
  "com",
+ "com_macros",
 ]
 
 [[package]]
