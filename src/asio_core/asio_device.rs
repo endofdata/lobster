@@ -1,5 +1,5 @@
 use crate::asio_core::*;
-use crate::asio_core::sample_buffer::{ SampleBufferFactory, SampleInput, SampleOutput};
+use crate::asio_core::sample_buffer::{ SampleBufferFactory, SampleInput, SampleOutput, EmptyBuffer, SamplePanner};
 
 pub enum HardwarePin {
 	Input(Box<dyn SampleInput>),
@@ -15,6 +15,7 @@ pub struct ASIODevice {
 	iasio: Option<IASIO>,
 	#[allow(dead_code)]
 	callbacks: Box<Callbacks>,
+	empty_buffer: Box<EmptyBuffer>,
 	pub driver_name: String,
 	pub input_channels: Box<[Channel]>,
 	pub output_channels: Box<[Channel]>
@@ -45,7 +46,8 @@ impl ASIODevice {
 			}),
 			driver_name: String::from("Null Device"),
 			input_channels: Vec::<Channel>::new().into_boxed_slice(),
-			output_channels: Vec::<Channel>::new().into_boxed_slice()
+			output_channels: Vec::<Channel>::new().into_boxed_slice(),
+			empty_buffer: Box::new(EmptyBuffer::new(0, true))
 		}
 	}
 
@@ -70,15 +72,19 @@ impl ASIODevice {
 		// TODO: Is it OK we regard only buffers[0]? I think, buffer[1] was same pointer...
 		let mut input_channels = Vec::<Channel>::new();
 		for index in 0..num_input_channels {
-			input_channels.push(ASIODevice::get_channel(iasio_ref, ASIOBool::True, index, buffer_infos[index as usize].buffers[0], pref_buffer_size));
+			let buffer_info = &buffer_infos[index as usize];
+			input_channels.push(ASIODevice::get_channel(iasio_ref, ASIOBool::True, index, buffer_info, pref_buffer_size));
 		}
 		self.input_channels = input_channels.into_boxed_slice();
 
 		let mut output_channels = Vec::<Channel>::new();
 		for index in 0..num_output_channels {
-			output_channels.push(ASIODevice::get_channel(iasio_ref, ASIOBool::False, index, buffer_infos[(num_input_channels + index) as usize].buffers[0], pref_buffer_size));
+			let buffer_info = &buffer_infos[(num_input_channels + index) as usize];
+			output_channels.push(ASIODevice::get_channel(iasio_ref, ASIOBool::False, index, buffer_info, pref_buffer_size));
 		}
-		self.output_channels = output_channels.into_boxed_slice();		
+		self.output_channels = output_channels.into_boxed_slice();
+
+		self.empty_buffer = Box::new(EmptyBuffer::new(pref_buffer_size as usize, true));
 	}
 
 	pub fn set_sample_rate(&mut self, sample_rate: f64) -> bool {
@@ -222,7 +228,7 @@ impl ASIODevice {
 		}
 	}
 
-	fn get_channel(iasio: &IASIO, is_input: ASIOBool, id: i32, buffer: *mut (), buffer_size: i32) -> Channel {
+	fn get_channel(iasio: &IASIO, is_input: ASIOBool, id: i32, buffer_info : &BufferInfo, buffer_size: i32) -> Channel {
 		let mut channel_info = ChannelInfo::new_for(is_input, id);
 
 		unsafe {
@@ -233,16 +239,19 @@ impl ASIODevice {
 
 		let name = String::from_utf8(channel_info.name.to_vec()).expect("Channel name is utf-8");
 
+		let buffer_a: *mut () = buffer_info.buffers[0];
+		let buffer_b: *mut () = buffer_info.buffers[1];
+
 		return match channel_info.sample_type {
 			ASIOSampleType::Int32LSB => {
 				match is_input {
 					ASIOBool::True => Channel { 
 						name: name, 
-						pin: HardwarePin::Input(SampleBufferFactory::create_input_i32(buffer, buffer_size as usize)) 
+						pin: HardwarePin::Input(SampleBufferFactory::create_input_i32(buffer_a, buffer_b, buffer_size as usize)) 
 					},
 					ASIOBool::False => Channel {
 						name: name,
-						pin: HardwarePin::Output(SampleBufferFactory::create_output_i32(buffer, buffer_size as usize)) 
+						pin: HardwarePin::Output(SampleBufferFactory::create_output_i32(buffer_a, buffer_b, buffer_size as usize)) 
 					}
 				}
 			}
@@ -270,9 +279,72 @@ impl ASIODevice {
 		buffer_infos
 	}
 
-	fn buffer_switch(&mut self, params: *const Time, _double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time {
+	fn buffer_switch(&mut self, params: *const Time, double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time {
 		
+		// The double_buffer_index indicates, 
+		// - which output buffer the host should now start to fill
+		// - which input buffer is filled with incoming data by the driver
+		let write_second_half = double_buffer_index != 0;
+		let read_second_half = double_buffer_index == 0;
+
+		let input_count = self.input_channels.len();
+
+		let input_samples = match input_count {
+			1 => {
+				let input = self.get_input(0);
+				input.select_buffer(read_second_half);
+				SamplePanner::new_mono(input.read())
+			},
+			// 2 => {
+			// 	let input_a = self.get_input(0);
+			// 	input_a.select_buffer(read_second_half);
+			// 	let samples_a = input_a.read();
+
+			// 	let input_b = self.get_input(1);
+			// 	input_b.select_buffer(read_second_half);
+			// 	let samples_b = input_b.read();
+
+			// 	SamplePanner::new_stereo(samples_a, samples_b)
+			// },
+			_ => panic!("Unsupported input channel count")
+		};
+
+		let output_count = self.output_channels.len();
+
+		match output_count {
+			1 => {
+				let output_mono = self.get_output(0);
+				output_mono.select_buffer(write_second_half);
+				output_mono.write(input_samples.mono());
+			},
+			2 => {
+				let output_left = self.get_output(0);
+				output_left.select_buffer(write_second_half);
+				output_left.write(input_samples.left());
+
+				let output_right = self.get_output(1);
+				output_right.select_buffer(write_second_half);
+				output_right.write(input_samples.right());
+			},
+			_ => panic!("Unsupported output channel count")
+		};
 		params
+	}
+
+	fn get_input(&mut self, index: usize) -> &mut dyn SampleInput {
+		let input_channels = self.input_channels.as_mut();		
+		match &mut input_channels[index].pin {
+			HardwarePin::Input(item) => item.as_mut(),
+			_ => panic!("Failed to get input pin from input channel.")
+		}
+	}
+
+	fn get_output(&mut self, index: usize) -> &mut dyn SampleOutput {
+		let output_channels = self.output_channels.as_mut();	
+		match &mut output_channels[index].pin {
+			HardwarePin::Output(item) => item.as_mut(),
+			_ => panic!("Failed to get input pin from input channel.")
+		}
 	}
 }
 
