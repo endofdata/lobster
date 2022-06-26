@@ -21,9 +21,10 @@ fn main() {
 			data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
 		};
 
-		let device = asio_core::asio_device::ASIODevice::set_active_device(clsid);
+		// TODO: We cannot know the sample type here
+		let device = asio_core::asio_device::ASIODevice::<i32>::set_active_device(clsid);
 		
-		println!("Created ASIO device '{}'", device.driver_name);
+		println!("Created ASIO device '{}'", device.get_driver_name());
 
 		device.set_sample_rate(48000.0f64);
 
