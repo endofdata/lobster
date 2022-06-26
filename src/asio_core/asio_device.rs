@@ -12,7 +12,7 @@ pub trait ASIODeviceType {
 }
 
 pub struct ASIODevice<T> {	
-	iasio: Option<IASIO>,
+	iasio: IASIO,
 	#[allow(dead_code)]
 	callbacks: Box<Callbacks>,
 	pub driver_name: String,
@@ -24,63 +24,162 @@ pub struct ASIODevice<T> {
 unsafe impl<T> std::marker::Sync for ASIODevice<T> {
 }
 
-impl<T: 'static + Copy> ASIODevice<T> {
-	pub fn set_active_device<'a>(clsid : com::CLSID) -> &'a mut dyn ASIODeviceType {
+pub struct ASIODeviceFactory {
+}
+
+impl ASIODeviceFactory {
+	pub fn create_device(clsid : com::CLSID) -> &'static mut dyn ASIODeviceType {
 		unsafe {
-			let mut dev = ASIODevice::<T>::new();
-			dev.open(clsid);
-			THE_DEVICE = Some(Box::new(dev));
-			//THE_DEVICE.as_mut().unwrap()
-			THE_DEVICE.unwrap().as_mut()
+			THE_DEVICE = Some(Box::new(ASIODeviceFactory::open(clsid)));
+			let unwrapped = &mut THE_DEVICE.unwrap();
+			unwrapped
 		}
 	}
 
-	fn new() -> ASIODevice<T> {
-		ASIODevice {
-			iasio: None,
-			callbacks: Box::new(Callbacks {
-				buffer_switch: cb_buffer_switch,
-				sample_rate_did_change: cb_sample_rate_did_change,
-				asio_message: cb_asio_message,
-				buffer_switch_time_info: cb_buffer_switch_time_info
-			}),
-			driver_name: String::from("Null Device"),
-			input_channels: Vec::<InputChannel<T>>::new().into_boxed_slice(),
-			output_channels: Vec::<OutputChannel<T>>::new().into_boxed_slice()
-		}
-	}
-
-	pub fn open(&mut self, clsid: com::CLSID) {
+	fn open(clsid: com::CLSID) -> impl ASIODeviceType {
 		let iasio = match create_device(&clsid) {
 			Ok(value) => value,
 			Err(hr) => panic!("Failed to create ASIO device: 0x{:x}", hr),
 		};
 
-		self.iasio = Some(iasio);
-
-		let iasio_ref = self.iasio.as_ref().unwrap();
-		self.driver_name = ASIODevice::<T>::get_driver_name(iasio_ref);	
-
-		let pref_buffer_size = ASIODevice::<T>::get_buffer_size(iasio_ref);
-		let (max_input_channels, max_output_channels) = ASIODevice::<T>::get_channel_count(iasio_ref);
+		let driver_name = ASIODeviceFactory::get_driver_name(&iasio);	
+		let pref_buffer_size = ASIODeviceFactory::get_buffer_size(&iasio);
+		let (max_input_channels, max_output_channels) = ASIODeviceFactory::get_channel_count(&iasio);
 		let num_input_channels = core::cmp::min(max_input_channels, 2);
 		let num_output_channels = core::cmp::min(max_output_channels, 2);
+		let callbacks = Callbacks {
+			buffer_switch: cb_buffer_switch,
+			sample_rate_did_change: cb_sample_rate_did_change,
+			asio_message: cb_asio_message,
+			buffer_switch_time_info: cb_buffer_switch_time_info
+		};
 
-		let buffer_infos = ASIODevice::<T>::create_buffers(iasio_ref, num_input_channels, num_output_channels, pref_buffer_size, &self.callbacks);
+		let buffer_infos = ASIODeviceFactory::create_buffers(&iasio, num_input_channels, num_output_channels, pref_buffer_size, &callbacks);
+
+		// TODO: Is it sufficient to peek the sample type from the first available output channel?
+		let channel_info = ChannelInfo::new_for(ASIOBool::False, 0);
+
+		match channel_info.sample_type {
+			ASIOSampleType::Int32LSB => ASIODevice::<i32>::new(iasio, driver_name, num_input_channels, num_output_channels, pref_buffer_size, buffer_infos, callbacks),
+			_ => panic!("Unsupported sample type '{:?}'.", channel_info.sample_type)
+		}
+	}
+
+	fn get_driver_name(iasio: &IASIO) -> String {
+		
+		let mut driver_info = DriverInfo {
+			asio_version: 2,
+			driver_version: 0,
+			name: [0; 32],
+			error_message: [0; 124],
+			sys_ref: core::ptr::null::<()>(),
+		};
+
+		let driver_info_ptr: *mut DriverInfo = &mut driver_info;
+
+		unsafe {
+			match iasio.init(driver_info_ptr as *mut ()) {
+				ASIOBool::False => panic!("Driver initialization failed: {}", ASIODeviceFactory::get_error_message(&iasio)),
+				ASIOBool::True => {
+					let mut buffer = vec![0u8; 128];
+					let ptr = buffer.as_mut_ptr();
+					iasio.get_driver_name(ptr);
+
+					let trimmed : Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
+					return String::from_utf8(trimmed)
+						.expect("Driver name is valid UTF-8");
+				}
+			}
+		}
+	}
+
+	
+	fn get_buffer_size(iasio: &IASIO) -> i32 {
+		let mut min_buffer_size = 0i32;
+		let mut max_buffer_size = 0i32;
+		let mut pref_buffer_size = 0i32;
+		let mut granularity = 0i32;
+		unsafe {
+			match iasio.get_buffer_size(&mut min_buffer_size, &mut max_buffer_size, &mut pref_buffer_size, &mut granularity) {
+				ASIOError::Ok => pref_buffer_size,
+				_ => panic!("Failed to get buffer size information")
+			}
+		}
+	}
+
+	fn get_channel_count(iasio: &IASIO) -> (i32, i32) {
+		let mut max_input_channels: i32 = 0;
+		let mut max_output_channels: i32 = 0;
+	
+		unsafe {
+			match iasio.get_channels(&mut max_input_channels, &mut max_output_channels) {
+				ASIOError::Ok => (max_input_channels, max_output_channels),
+				_ => panic!("Failed to get channel count information")
+			}
+		}
+	}
+
+	fn create_buffers(iasio: &IASIO, num_input_channels : i32, num_output_channels : i32, pref_buffer_size: i32, callbacks: &Callbacks) -> Vec<BufferInfo> {
+		let mut buffer_infos = Vec::<BufferInfo>::with_capacity((num_input_channels + num_output_channels) as usize);
+
+		for id in 0..num_input_channels {
+			buffer_infos.push(BufferInfo { channel_num: id, is_input: ASIOBool::True, buffers: [core::ptr::null_mut::<()>(); 2] });
+		}
+
+		for id in 0..num_output_channels {
+			buffer_infos.push(BufferInfo { channel_num: id, is_input: ASIOBool::False, buffers: [core::ptr::null_mut::<()>(); 2] });
+		}
+
+		unsafe {
+			let result = iasio.create_buffers(buffer_infos.as_mut_ptr(), buffer_infos.len() as i32, pref_buffer_size, callbacks);
+			if result != ASIOError::Ok {
+				panic!("Failed to create buffers: {:?}", result);
+			};
+		}
+		buffer_infos
+	}
+
+	fn get_error_message(iasio: &IASIO) -> String {
+		let mut buffer = vec![0u8; 256];
+		let ptr = buffer.as_mut_ptr();
+	
+		unsafe {
+			iasio.get_error_message(ptr);
+		}
+		let trimmed : Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
+	
+		String::from_utf8(trimmed)
+			.expect("Error message is valid UTF-8")
+	}
+
+}
+
+impl<T: 'static + Copy> ASIODevice<T> {
+
+	pub fn new(iasio: IASIO, driver_name: String, num_input_channels: i32, num_output_channels: i32, 
+		pref_buffer_size: i32, buffer_infos: Vec<BufferInfo>, callbacks: Callbacks) -> ASIODevice<T> {
 
 		let mut input_channels = Vec::<InputChannel<T>>::new();
 		for index in 0..num_input_channels {
 			let buffer_info = &buffer_infos[index as usize];
-			input_channels.push(ASIODevice::<T>::get_input_channel(iasio_ref, index, buffer_info, pref_buffer_size));
+			input_channels.push(ASIODevice::<T>::get_input_channel(&iasio, index, buffer_info, pref_buffer_size));
 		}
-		self.input_channels = input_channels.into_boxed_slice();
+		let input_channels = input_channels.into_boxed_slice();
 
 		let mut output_channels = Vec::<OutputChannel<T>>::new();
 		for index in 0..num_output_channels {
 			let buffer_info = &buffer_infos[(num_input_channels + index) as usize];
-			output_channels.push(ASIODevice::<T>::get_output_channel(iasio_ref, index, buffer_info, pref_buffer_size));
+			output_channels.push(ASIODevice::<T>::get_output_channel(&iasio, index, buffer_info, pref_buffer_size));
 		}
-		self.output_channels = output_channels.into_boxed_slice();
+		let output_channels = output_channels.into_boxed_slice();
+
+		ASIODevice {
+			iasio: iasio,
+			callbacks: Box::new(callbacks),
+			driver_name: driver_name,
+			input_channels: input_channels,
+			output_channels: output_channels
+		}
 	}
 
 	// pub fn get_features() {
@@ -118,72 +217,6 @@ impl<T: 'static + Copy> ASIODevice<T> {
 	// 	clock_sources.iter().map(|cs| cs.name)
 	// }
 
-	fn get_error_message(iasio: &IASIO) -> String {
-		let mut buffer = vec![0u8; 256];
-		let ptr = buffer.as_mut_ptr();
-	
-		unsafe {
-			iasio.get_error_message(ptr);
-		}
-		let trimmed : Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
-	
-		String::from_utf8(trimmed)
-			.expect("Error message is valid UTF-8")
-	}
-
-	fn get_driver_name(iasio: &IASIO) -> String {
-		
-		let mut driver_info = DriverInfo {
-			asio_version: 2,
-			driver_version: 0,
-			name: [0; 32],
-			error_message: [0; 124],
-			sys_ref: core::ptr::null::<()>(),
-		};
-
-		let driver_info_ptr: *mut DriverInfo = &mut driver_info;
-
-		unsafe {
-			match iasio.init(driver_info_ptr as *mut ()) {
-				ASIOBool::False => panic!("Driver initialization failed: {}", ASIODevice::<T>::get_error_message(&iasio)),
-				ASIOBool::True => {
-					let mut buffer = vec![0u8; 128];
-					let ptr = buffer.as_mut_ptr();
-					iasio.get_driver_name(ptr);
-
-					let trimmed : Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
-					return String::from_utf8(trimmed)
-						.expect("Driver name is valid UTF-8");
-				}
-			}
-		}
-	}
-
-	fn get_buffer_size(iasio: &IASIO) -> i32 {
-		let mut min_buffer_size = 0i32;
-		let mut max_buffer_size = 0i32;
-		let mut pref_buffer_size = 0i32;
-		let mut granularity = 0i32;
-		unsafe {
-			match iasio.get_buffer_size(&mut min_buffer_size, &mut max_buffer_size, &mut pref_buffer_size, &mut granularity) {
-				ASIOError::Ok => pref_buffer_size,
-				_ => panic!("Failed to get buffer size information")
-			}
-		}
-	}
-
-	fn get_channel_count(iasio: &IASIO) -> (i32, i32) {
-		let mut max_input_channels: i32 = 0;
-		let mut max_output_channels: i32 = 0;
-	
-		unsafe {
-			match iasio.get_channels(&mut max_input_channels, &mut max_output_channels) {
-				ASIOError::Ok => (max_input_channels, max_output_channels),
-				_ => panic!("Failed to get channel count information")
-			}
-		}
-	}
-
 	fn get_channel_name(iasio: &IASIO, is_input: bool, id: i32) -> String {
 		let asio_is_input = match is_input {
 			true => ASIOBool::True,
@@ -217,26 +250,6 @@ impl<T: 'static + Copy> ASIODevice<T> {
 		OutputChannel::<T>::new(&ASIODevice::<T>::get_channel_name(iasio, false, id), buffer_a as *mut T, buffer_b as *mut T, buffer_size as usize)
 	}
 
-	fn create_buffers(iasio: &IASIO, num_input_channels : i32, num_output_channels : i32, pref_buffer_size: i32, callbacks: &Callbacks) -> Vec<BufferInfo> {
-		let mut buffer_infos = Vec::<BufferInfo>::with_capacity((num_input_channels + num_output_channels) as usize);
-
-		for id in 0..num_input_channels {
-			buffer_infos.push(BufferInfo { channel_num: id, is_input: ASIOBool::True, buffers: [core::ptr::null_mut::<()>(); 2] });
-		}
-
-		for id in 0..num_output_channels {
-			buffer_infos.push(BufferInfo { channel_num: id, is_input: ASIOBool::False, buffers: [core::ptr::null_mut::<()>(); 2] });
-		}
-
-		unsafe {
-			let result = iasio.create_buffers(buffer_infos.as_mut_ptr(), buffer_infos.len() as i32, pref_buffer_size, callbacks);
-			if result != ASIOError::Ok {
-				panic!("Failed to create buffers: {:?}", result);
-			};
-		}
-		buffer_infos
-	}
-
 	fn get_input(&mut self, index: usize) -> &mut InputChannel<T> {
 		// let input_channels = &self.input_channels.as_mut();
 		// let boxed = input_channels[index].native_buffer;
@@ -264,7 +277,7 @@ impl<T> ASIODeviceType for ASIODevice<T> {
 	}
 
 	fn set_sample_rate(&mut self, sample_rate: f64) -> bool {
-		let iasio_ref = self.iasio.as_ref().unwrap();
+		let iasio_ref = &self.iasio;
 
 		unsafe {
 			if iasio_ref.can_sample_rate(sample_rate) == ASIOError::Ok {
@@ -280,7 +293,7 @@ impl<T> ASIODeviceType for ASIODevice<T> {
 	}
 
 	fn get_sample_rate(&self) -> f64 {
-		let iasio_ref = self.iasio.as_ref().unwrap();
+		let iasio_ref = &self.iasio;
 
 		let mut effective_sample_rate = 0f64;
 		unsafe{
@@ -294,14 +307,14 @@ impl<T> ASIODeviceType for ASIODevice<T> {
 	}
 
 	fn start(&mut self) {
-		let iasio_ref = self.iasio.as_ref().unwrap();
+		let iasio_ref = &self.iasio;
 		unsafe {
 			iasio_ref.start();
 		}
 	}
 
 	fn stop(&mut self) {
-		let iasio_ref = self.iasio.as_ref().unwrap();
+		let iasio_ref = &self.iasio;
 		unsafe {
 			iasio_ref.stop();
 		}
@@ -309,7 +322,7 @@ impl<T> ASIODeviceType for ASIODevice<T> {
 
 }
 
-pub static mut THE_DEVICE : Option<Box<dyn ASIODeviceType>> = None;
+static mut THE_DEVICE : Option<Box<dyn ASIODeviceType>> = None;
 
 extern "C" fn cb_buffer_switch(double_buffer_index: i32, direct_process: ASIOBool) {
 	cb_buffer_switch_time_info(core::ptr::null::<Time>(), double_buffer_index, direct_process);
