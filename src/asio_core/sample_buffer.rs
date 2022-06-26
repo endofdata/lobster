@@ -1,221 +1,199 @@
 use std::iter::*;
 
-pub trait SampleDoubleBuffer {
-	fn select_buffer(&mut self, is_second: bool);
-	fn reset(&mut self);
-}
-
-pub trait SampleOutput : SampleDoubleBuffer {
-	fn write(&mut self, samples: &mut dyn Iterator<Item = f64>);
-}
-
-pub trait SampleInput : SampleDoubleBuffer {
-	fn read(&mut self) -> &mut dyn Iterator<Item = f64>;
-}
-
-pub struct SampleBufferFactory {
-}
-
-impl SampleBufferFactory {
-	pub fn create_input_i32(ptr_a: *mut (), ptr_b: *mut (), len: usize) -> Box<dyn SampleInput> {
-		Box::new(SampleBuffer::<i32>::new(ptr_a as *mut i32, ptr_b as *mut i32, len, true))
-	}
-	pub fn create_output_i32(ptr_a: *mut (), ptr_b: *mut (), len: usize) -> Box<dyn SampleOutput> {
-		Box::new(SampleBuffer::<i32>::new(ptr_a as *mut i32, ptr_b as *mut i32, len, false))
-	}
-}
-
 const MAX_I32_VALUE: f64 = 2147483647.0f64;
+const PAN_LEFT: f64 = -1.0f64;
+const PAN_RIGHT: f64 = 1.0f64;
 
-struct SampleBuffer<T: Copy + Clone> {
-	#[allow(dead_code)]
-	is_input: bool,
-	raw_samples_a: *mut T,
-	raw_samples_b: *mut T,
-	current: *mut T,
+pub trait WritableBufferPair {
+	fn write(self, samples: &mut dyn Iterator<Item = f64>);
+}
+
+pub trait NativeBufferPair : Iterator<Item = f64> {
+	fn select_buffer(&mut self, is_second: bool);
+
+	fn reset(&mut self);
+
+	fn as_writable(&mut self) -> &mut dyn WritableBufferPair;
+}
+
+
+trait SampleConvert {
+	type Sample;
+
+	fn from_native(&self) -> f64;
+	fn to_native(sample: f64) -> Self::Sample;
+}
+
+pub struct BufferFactory {
+}
+
+impl BufferFactory {
+	pub fn create<T: SampleConvert<Sample = T> + Copy>(ptr_a: *mut (), ptr_b: *mut (), len: usize) -> Box<impl NativeBufferPair> {
+		let buffer_pair = NativeBufferPairOf::<T>::new(ptr_a as *mut T, ptr_b as *mut T, len);
+		let boxed = Box::new(buffer_pair);
+
+		boxed
+	}
+}
+
+pub struct NativeBufferPairOf<T> where T: SampleConvert {
+	pos: usize,
 	len: usize,
-	pos: usize
+	is_second: bool,
+	ptr_a: *mut T,
+	ptr_b: *mut T
 }
 
-impl<T: Copy + Clone> SampleBuffer<T> {
-	pub fn new(ptr_a: *mut T, ptr_b: *mut T, len: usize, is_input: bool) -> SampleBuffer<T> {
-		SampleBuffer {
-			is_input: is_input,
-			raw_samples_a: ptr_a,
-			raw_samples_b: ptr_b,
-			current: ptr_a,
+impl<T: SampleConvert> NativeBufferPairOf<T> {
+	fn new(ptr_a: *mut T, ptr_b: *mut T, len: usize) -> NativeBufferPairOf<T> {
+		NativeBufferPairOf {
+			pos: 0,
 			len: len,
-			pos: 0
+			is_second: false,
+			ptr_a: ptr_a,
+			ptr_b: ptr_b
 		}
 	}
 
-	fn inc_pos(&mut self) -> bool {
-		self.pos += 1;
-		if self.pos >= self.len {
-			self.pos = 0;
-			return true;
-		}
-		else {
-			return false;
+	fn get_current(&self) -> *mut T {
+		match self.is_second {
+			true => self.ptr_a,
+			false => self.ptr_b
 		}
 	}
 }
 
-impl<T: Copy + Clone> SampleDoubleBuffer for SampleBuffer<T> {
-	fn select_buffer(&mut self, is_second: bool) {
-		self.current = match is_second {
-			true => self.raw_samples_b,
-			_ => self.raw_samples_a
+impl<T: SampleConvert<Sample=T> + Copy> WritableBufferPair for NativeBufferPairOf<T> {
+	fn write(mut self, samples: &mut dyn Iterator<Item = f64>) {
+		let buffer = self.get_current();
+		let avail = self.len - self.pos;
+
+		for native_sample in samples.map(|s| T::to_native(s)).take(avail) {
+			unsafe {
+				*buffer.offset(self.pos as isize) = native_sample;
+			}
+			self.pos += 1;
 		}
+	}
+}
+
+impl<T: SampleConvert<Sample =T> + Copy> NativeBufferPair for NativeBufferPairOf<T> {
+	fn select_buffer(&mut self, is_second: bool) {
+		self.is_second = is_second;
 	}
 
 	fn reset(&mut self) {
 		self.pos = 0;
 	}
-}
 
-impl Iterator for SampleBuffer<i32> {
-	type Item = f64;
-
-	fn  next(&mut self) -> Option<f64> {
-		match self.inc_pos() {
-			true => None,
-			false => unsafe {
-				let raw_sample = *self.current.offset(self.pos as isize);
-				Some((raw_sample as f64) / MAX_I32_VALUE)
-			}
-		}
-	}
-}
-
-impl SampleOutput for SampleBuffer<i32> {
-	fn write(&mut self, samples: &mut dyn Iterator<Item = f64>) {
-		for raw_sample in samples.map(|s| (s * MAX_I32_VALUE) as i32) {
-			match self.inc_pos() {
-				true => break,
-				false => unsafe {
-					self.current.offset(self.pos as isize).write(raw_sample)
-				}
-			};
-		}
-	}
-}
-
-impl SampleInput for SampleBuffer<i32> {
-	fn read(&mut self) -> &mut dyn Iterator<Item = f64> {		
+	fn as_writable<'a>(&'a mut self) -> &'a mut dyn WritableBufferPair {
 		self
 	}
 }
 
-pub struct EmptyBuffer {
-	len: usize,
-	pos: usize,
-	auto_wrap: bool
-}
+impl<T: SampleConvert<Sample = T> + Copy> Iterator for NativeBufferPairOf<T> {
+	type Item = f64;
 
-impl EmptyBuffer {
-	pub fn new(len: usize, auto_wrap: bool) -> EmptyBuffer {
-		EmptyBuffer {
-			len: len,
-			pos: 0,
-			auto_wrap: auto_wrap
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.pos < self.len {
+			true => {
+				let native_sample;
+				unsafe {
+					native_sample = *self.get_current().offset(self.pos as isize);
+				}
+				self.pos += 1;
+				Some(native_sample.from_native())
+			},
+			false => None
 		}
 	}
 }
 
-impl Iterator for EmptyBuffer {
+
+impl SampleConvert for i32 {
+	type Sample = i32;
+
+	fn from_native(&self) -> f64 {
+		(*self as f64) / MAX_I32_VALUE
+	}
+
+	fn to_native(sample: f64) -> Self::Sample {
+		(sample * MAX_I32_VALUE) as Self::Sample
+	}
+}
+
+/// Implements iterator for sample tuples (f64, f64) and conversion to [Mono]
+pub struct Stereo<I> {
+	iter_stereo: I
+}
+
+fn distribute_impl(iter_mono: impl Iterator<Item = f64>) -> impl Iterator<Item = (f64,f64)> {
+	iter_mono.map(|s| (s, s))
+}
+
+// fn distribute_generic<I:Iterator<Item = (f64,f64)>>(iter_mono: impl Iterator<Item = f64>) -> I {
+// 	iter_mono.map(|s| (s, s))
+// }
+
+// fn distribute<I>(iter_mono: impl Iterator<Item = f64>) -> I where I: Iterator<Item = (f64,f64)> {
+//  	iter_mono.map(|s| (s, s))
+// }
+
+impl<I> Stereo<I> where I: Iterator<Item = (f64, f64)> {
+	pub fn new(iter_stereo: I) -> Stereo<I> {
+		Stereo {
+			iter_stereo
+		}
+	}
+
+	pub fn to_mono(self, vol: f64) -> Mono<impl Iterator<Item = f64>> {
+		let factor_mono = vol;
+
+		Mono::new(self.map(move |(left, right)| (left + right) * factor_mono))
+	}
+
+	pub fn left(self) -> Mono<impl Iterator<Item = f64>> {
+		Mono::new(self.map(|(left, _)| left))
+	}
+
+	pub fn right(self) -> Mono<impl Iterator<Item = f64>> {
+		Mono::new(self.map(|(_, right)| right))
+	}
+}
+
+impl<I: Iterator<Item = (f64, f64)>> Iterator for Stereo<I> {
+	type Item = I::Item;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.iter_stereo.next()
+	}
+}
+
+/// Implements iterator for samples f64 and conversion to [Stereo]
+pub struct Mono<I> {
+	iter_mono: I
+}
+
+impl<I: Iterator<Item = f64>> Mono<I> {
+	pub fn new(iter_mono: I) -> Mono<I> {
+		Mono {
+			iter_mono
+		}
+	}
+
+	pub fn to_stereo(self, pan: f64, vol: f64) -> Stereo<impl Iterator<Item = (f64, f64)>> {
+		let limited_pan = pan.max(PAN_LEFT).min(PAN_RIGHT);		
+		let factor_left = (limited_pan + PAN_LEFT) * vol * -0.5;
+		let factor_right = (limited_pan + PAN_RIGHT) * vol * 0.5;
+
+		Stereo::new(self.iter_mono.map(move |m| (m * factor_left, m * factor_right)))
+	}
+}
+
+impl<I: Iterator<Item = f64>> Iterator for Mono<I> {
 	type Item = f64;
 
 	fn next(&mut self) -> Option<f64> {
-		if self.pos < self.len {
-			self.pos += 1; 
-			Some(0.0f64)
-		}
-		else if self.auto_wrap {
-			self.pos = 1;
-			Some(0.0f64)
-		}
-		else {
-			None
-		}
-	}		
-}
-
-impl SampleDoubleBuffer for EmptyBuffer {
-
-	fn select_buffer(&mut self, _is_second: bool) {
-	}
-	
-	fn reset(&mut self) {
-		self.pos = 0
-	}
-}
-
-
-pub struct SamplePanner<'a> {
-	samples_a: &'a mut dyn Iterator<Item = f64>,
-	samples_b: &'a mut dyn Iterator<Item = f64>,
-}
-
-impl SamplePanner {
-	pub fn new_mono(mono_samples: &mut dyn Iterator<Item = f64>) -> SamplePanner {
-		let sample_array = mono_samples.collect::<Vec<f64>>();
-		SamplePanner {
-			samples_a: sample_array,
-			samples_b: sample_array,
-		}
-	}
-
-	pub fn new_stereo(samples_a: &mut dyn Iterator<Item = f64>, samples_b: &mut dyn Iterator<Item = f64>) -> SamplePanner {
-		SamplePanner {
-			samples_a: samples_a.collect(),
-			samples_b: samples_b.collect(),
-		}
-	}
-
-	pub fn mono<'a>(&self) -> &mut dyn Iterator<Item = f64> {
-		&mut SampleCombiner::new(&self.samples_a.into_iter(), &self.samples_b.into_iter(), 0.0f64, 1.0f64)
-	}
-
-	pub fn left(&self) -> &mut dyn Iterator<Item = f64> {
-		&mut SampleCombiner::new(&self.samples_a.into_iter(), &self.samples_b.into_iter(), -1.0f64, 1.0f64)
-	}
-
-	pub fn right(&self) -> &mut dyn Iterator<Item = f64> {
-		&mut SampleCombiner::new(&self.samples_a.into_iter(), &self.samples_b.into_iter(), 1.0f64, 1.0f64)
-	}
-}
-
-pub struct SampleCombiner<'a> {
-	samples_a: &'a dyn Iterator<Item = f64>,
-	samples_b: &'a dyn Iterator<Item = f64>,
-	factor_left: f64,
-	factor_right: f64
-}
-
-impl<'a> SampleCombiner<'a> {
-	pub fn new(samples_a: &'a dyn Iterator<Item = f64>, samples_b: &'a dyn Iterator<Item = f64>, pan: f64, volume: f64) -> SampleCombiner<'a> {
-		SampleCombiner {
-			samples_a: samples_a,
-			samples_b: samples_b,
-			factor_left: (pan - 1.0f64) * -0.5f64 * volume,
-			factor_right: (pan + 1.0f64) * 0.5f64 * volume	
-		}
-	}
-}
-
-impl<'a> Iterator for  SampleCombiner<'a> {
-	type Item = f64;
-
-	fn next(&mut self) -> Option<f64> {
-		let left = self.samples_a.next();
-		let right = self.samples_b.next();
-
-		if left != None && right != None {
-			Some(left.unwrap() * self.factor_left + right.unwrap() * self.factor_right)
-		}
-		else {
-			None
-		}
+		self.iter_mono.next()
 	}
 }
