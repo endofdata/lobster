@@ -125,6 +125,11 @@ impl<T: 'static + Copy> ASIODevice<T> {
 	fn get_output(&mut self, index: usize) -> &mut OutputChannel<T> {
 		&mut self.output_channels[index]
 	}
+
+	fn get_both_test(&mut self) -> (&mut InputChannel<T>, &mut OutputChannel<T>) {
+		(&mut self.input_channels[0], &mut self.output_channels[0])
+	}
+
 }
 
 impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
@@ -133,11 +138,10 @@ impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
 		// The double_buffer_index indicates, 
 		// - which output buffer the host should now start to fill
 		// - which input buffer is filled with incoming data by the driver
-		let write_second_half = double_buffer_index != 0;
-		let read_second_half = double_buffer_index == 0;
+		// let input_channel = self.get_input(0);		
+		// let output_channel = self.get_output(0);
 
-		let input_channel = self.get_input(0);		
-		let output_channel = self.get_output(0);
+		let (input_channel, output_channel) = self.get_both_test();
 
 		input_channel.select_buffer(double_buffer_index);
 		output_channel.select_buffer(double_buffer_index);
