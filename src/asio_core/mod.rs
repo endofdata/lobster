@@ -1,7 +1,10 @@
 //pub mod sample_buffer;
 pub mod asio_device;
+pub mod device_factory;
+pub mod device_singleton;
 pub mod input_channel;
 pub mod output_channel;
+pub mod sample_buffer;
 
 use com::sys::{
     CoCreateInstance, CLSCTX_INPROC_SERVER, CLSID, FAILED, HRESULT, IID,

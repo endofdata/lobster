@@ -22,7 +22,7 @@ fn main() {
 		};
 
 		// TODO: We cannot know the sample type here
-		let device = asio_core::asio_device::ASIODeviceFactory::create_device(clsid);
+		let device = asio_core::device_factory::DeviceFactory::create_device(clsid);
 
 		println!("Created ASIO device '{}'", device.get_driver_name());
 
@@ -37,6 +37,8 @@ fn main() {
 		println!("ASIO device stopping");
 		device.stop();		
 		println!("ASIO device stopped");
+
+		asio_core::device_factory::DeviceFactory::drop_device();
 	}
 
 	unsafe {
