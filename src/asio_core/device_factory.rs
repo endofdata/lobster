@@ -31,7 +31,11 @@ impl DeviceFactory {
 		let buffer_infos = DeviceFactory::create_buffers(&iasio, num_input_channels, num_output_channels, pref_buffer_size, &callbacks);
 
 		// TODO: Is it sufficient to peek the sample type from the first available output channel?
-		let channel_info = ChannelInfo::new_for(ASIOBool::False, 0);
+		let mut channel_info = ChannelInfo::new_for(ASIOBool::False, 0);
+
+		unsafe {
+			iasio.get_channel_info(&mut channel_info);
+		}
 
 		match channel_info.sample_type {
 			ASIOSampleType::Int32LSB => ASIODevice::<i32>::new(iasio, driver_name, num_input_channels, num_output_channels, pref_buffer_size, buffer_infos, callbacks),
