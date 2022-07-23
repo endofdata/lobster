@@ -2,8 +2,6 @@ use crate::asio_core::{ IASIO, Callbacks, ASIOBool, ASIOError, BufferInfo, Chann
 use crate::asio_core::input_channel::InputChannel;
 use crate::asio_core::output_channel::OutputChannel;
 
-use super::output_channel;
-
 pub trait ASIODeviceType {
 	fn buffer_switch(&mut self, params: *const Time, double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time;
 	fn get_sample_rate(&self) -> f64;
@@ -117,19 +115,6 @@ impl<T: 'static + Copy> ASIODevice<T> {
 
 		OutputChannel::<T>::new(&ASIODevice::<T>::get_channel_name(iasio, false, id), buffer_a as *mut T, buffer_b as *mut T, buffer_size as usize)
 	}
-
-	fn get_input(&mut self, index: usize) -> &mut InputChannel<T> {
-		&mut self.input_channels[index]
-	}
-
-	fn get_output(&mut self, index: usize) -> &mut OutputChannel<T> {
-		&mut self.output_channels[index]
-	}
-
-	fn get_both_test(&mut self) -> (&mut InputChannel<T>, &mut OutputChannel<T>) {
-		(&mut self.input_channels[0], &mut self.output_channels[0])
-	}
-
 }
 
 impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
@@ -141,11 +126,12 @@ impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
 		// let input_channel = self.get_input(0);		
 		// let output_channel = self.get_output(0);
 
-		let (input_channel, output_channel) = self.get_both_test();
+		//let (input_channel, output_channel) = self.get_both_test();
 
-		input_channel.select_buffer(double_buffer_index);
-		output_channel.select_buffer(double_buffer_index);
-		output_channel.write(input_channel);
+		let source = &mut self.input_channels[0];
+
+		self.output_channels[0].write(double_buffer_index, &mut source.iter(double_buffer_index));
+		self.output_channels[1].write(double_buffer_index, &mut source.iter(double_buffer_index));
 
 		params
 	}

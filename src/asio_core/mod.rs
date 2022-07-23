@@ -5,6 +5,8 @@ pub mod device_singleton;
 pub mod input_channel;
 pub mod output_channel;
 pub mod sample_buffer;
+pub mod channel_iter;
+pub mod channel_iter_mut;
 
 use com::sys::{
     CoCreateInstance, CLSCTX_INPROC_SERVER, CLSID, FAILED, HRESULT, IID,
