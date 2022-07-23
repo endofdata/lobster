@@ -127,7 +127,7 @@ impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
 		// let output_channel = self.get_output(0);
 
 		//let (input_channel, output_channel) = self.get_both_test();
-
+		
 		let source = &mut self.input_channels[0];
 
 		self.output_channels[0].write(double_buffer_index, &mut source.iter(double_buffer_index));
@@ -168,15 +168,25 @@ impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
 
 	fn start(&mut self) {
 		let iasio_ref = &self.iasio;
+		let error;
+
 		unsafe {
-			iasio_ref.start();
+			error = iasio_ref.start();
+		}
+		if error != ASIOError::Ok {
+			panic!("Failed to start device");
 		}
 	}
 
 	fn stop(&mut self) {
 		let iasio_ref = &self.iasio;
+		let error;
+
 		unsafe {
-			iasio_ref.stop();
+			error = iasio_ref.stop();
+		}
+		if error != ASIOError::Ok {
+			panic!("Failed to stop device");
 		}
 	}
 
