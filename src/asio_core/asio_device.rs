@@ -23,7 +23,7 @@ pub struct ASIODevice<T> {
 impl<T: 'static + Copy> ASIODevice<T> {
 
 	pub fn new(iasio: IASIO, driver_name: String, num_input_channels: i32, num_output_channels: i32, 
-		pref_buffer_size: i32, buffer_infos: Vec<BufferInfo>, callbacks: Callbacks) -> ASIODevice<T> {
+		pref_buffer_size: i32, buffer_infos: Vec<BufferInfo>, callbacks: Box<Callbacks>) -> ASIODevice<T> {
 
 		let mut input_channels = Vec::<InputChannel<T>>::new();
 		for index in 0..num_input_channels {
@@ -41,7 +41,7 @@ impl<T: 'static + Copy> ASIODevice<T> {
 
 		ASIODevice {
 			iasio: iasio,
-			callbacks: Box::new(callbacks),
+			callbacks: callbacks,
 			driver_name: driver_name,
 			input_channels: input_channels,
 			output_channels: output_channels

@@ -26,7 +26,7 @@ impl DeviceFactory {
 		let (max_input_channels, max_output_channels) = DeviceFactory::get_channel_count(&iasio);
 		let num_input_channels = core::cmp::min(max_input_channels, 2);
 		let num_output_channels = core::cmp::min(max_output_channels, 2);
-		let callbacks = DeviceSingleton::init_callbacks();
+		let callbacks = Box::new(DeviceSingleton::init_callbacks());
 
 		let buffer_infos = DeviceFactory::create_buffers(&iasio, num_input_channels, num_output_channels, pref_buffer_size, &callbacks);
 
