@@ -22,7 +22,7 @@ impl<'a, T: Copy> Iterator for ChannelIterMut<'a, T> {
 	type Item = *mut T;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		match self.len < self.pos {
+		match self.pos < self.len {
 			true => {
 				let result;
 				unsafe {
