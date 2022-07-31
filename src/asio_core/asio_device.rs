@@ -1,6 +1,7 @@
 use crate::asio_core::{ IASIO, Callbacks, ASIOBool, ASIOError, BufferInfo, ChannelInfo, Time };
 use crate::asio_core::input_channel::InputChannel;
 use crate::asio_core::output_channel::OutputChannel;
+use crate::asio_core::sample_buffer::{SampleConvert};
 
 pub trait ASIODeviceType {
 	fn buffer_switch(&mut self, params: *const Time, double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time;
@@ -117,21 +118,22 @@ impl<T: 'static + Copy> ASIODevice<T> {
 	}
 }
 
-impl<T: 'static + Copy> ASIODeviceType for ASIODevice<T> {
+impl<T: 'static + Copy + SampleConvert<Sample = T>> ASIODeviceType for ASIODevice<T> {
 	fn buffer_switch(&mut self, params: *const Time, double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time {
 		
 		// The double_buffer_index indicates, 
 		// - which output buffer the host should now start to fill
-		// - which input buffer is filled with incoming data by the driver
-		// let input_channel = self.get_input(0);		
-		// let output_channel = self.get_output(0);
-
-		//let (input_channel, output_channel) = self.get_both_test();
-		
+		// - which input buffer is filled with incoming data by the driver		
 		let source = &mut self.input_channels[0];
 
-		self.output_channels[0].write(double_buffer_index, &mut source.iter(double_buffer_index));
-		self.output_channels[1].write(double_buffer_index, &mut source.iter(double_buffer_index));
+		let samples : Vec<f64> = source.iter(double_buffer_index).map(|n| n.from_native()).collect();
+
+		let left = &mut samples.iter().map(|s| T::to_native(*s * 0.5));
+		let right = &mut samples.iter().map(|s| T::to_native(*s * 0.5));
+		
+
+		self.output_channels[0].write(double_buffer_index, left);
+		self.output_channels[1].write(double_buffer_index, right);
 
 		params
 	}
