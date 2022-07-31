@@ -4,7 +4,7 @@ pub mod device_factory;
 pub mod device_singleton;
 pub mod input_channel;
 pub mod output_channel;
-pub mod sample_buffer;
+pub mod sample_convert;
 pub mod channel_iter;
 pub mod channel_iter_mut;
 

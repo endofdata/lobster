@@ -1,7 +1,7 @@
 use crate::asio_core::{ IASIO, Callbacks, ASIOBool, ASIOError, BufferInfo, ChannelInfo, Time };
 use crate::asio_core::input_channel::InputChannel;
 use crate::asio_core::output_channel::OutputChannel;
-use crate::asio_core::sample_buffer::{SampleConvert};
+use crate::asio_core::sample_convert::SampleConvert;
 
 pub trait ASIODeviceType {
 	fn buffer_switch(&mut self, params: *const Time, double_buffer_index: i32, _direct_process: ASIOBool) -> *const Time;
