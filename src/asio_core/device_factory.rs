@@ -6,8 +6,8 @@ pub struct DeviceFactory {
 }
 
 impl DeviceFactory {
-	pub fn create_device(clsid : com::CLSID) -> &'static mut dyn ASIODeviceType {
-		DeviceSingleton::new(Box::new(DeviceFactory::open(clsid)));
+	pub fn create_device(clsid : com::CLSID, process: fn (Vec<Vec<f64>>, i32) -> Vec<Vec<f64>>) -> &'static mut dyn ASIODeviceType {
+		DeviceSingleton::new(Box::new(DeviceFactory::open(clsid, process)));
 		DeviceSingleton::get_device()
 	}
 
@@ -15,7 +15,7 @@ impl DeviceFactory {
 		DeviceSingleton::drop()
 	}
 
-	fn open(clsid: com::CLSID) -> impl ASIODeviceType {
+	fn open(clsid: com::CLSID, process: fn (Vec<Vec<f64>>, i32) -> Vec<Vec<f64>>) -> impl ASIODeviceType {
 		let iasio = match create_device(&clsid) {
 			Ok(value) => value,
 			Err(hr) => panic!("Failed to create ASIO device: 0x{:x}", hr),
@@ -38,7 +38,16 @@ impl DeviceFactory {
 		}
 
 		match channel_info.sample_type {
-			ASIOSampleType::Int32LSB => ASIODevice::<i32>::new(iasio, driver_name, num_input_channels, num_output_channels, pref_buffer_size, buffer_infos, callbacks),
+			ASIOSampleType::Int32LSB => ASIODevice::<i32>::new(
+				iasio, 
+				driver_name, 
+				num_input_channels, 
+				num_output_channels, 
+				pref_buffer_size, 
+				buffer_infos, 
+				callbacks,
+				process
+			),
 			_ => panic!("Unsupported sample type '{:?}'.", channel_info.sample_type)
 		}
 	}
