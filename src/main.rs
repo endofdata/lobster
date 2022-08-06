@@ -1,7 +1,9 @@
 mod asio_core;
+mod vst_host;
 
 use std::thread;
 use std::time::Duration;
+use vst_host::plugin_factory::PluginFactory;
 
 fn main() {
 	let hr = unsafe {
@@ -10,6 +12,16 @@ fn main() {
 			com::sys::COINIT_APARTMENTTHREADED,
 		)
 	};
+
+	let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
+	let plugin = PluginFactory::load_vst(library_path).unwrap();
+
+	let factory_info = plugin.get_factory_info();
+	let vendor = factory_info.get_vendor();
+	let email = factory_info.get_email();
+	let url = factory_info.get_url();
+
+	println!("Vendor: '{}', E-Mail: '{}', Url: '{}'", vendor, email, url);
 
 	if !com::sys::FAILED(hr) {
 		// Yamaha Steinberg USB ASIO
