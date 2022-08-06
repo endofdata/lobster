@@ -33,7 +33,7 @@ fn main() {
 		};
 
 		let device =
-			asio_core::device_factory::DeviceFactory::create_device(clsid, process_buffers);
+			asio_core::device_factory::DeviceFactory::create_device(clsid, process_buffers).expect("Failed to create ASIO device");
 
 		println!("Created ASIO device '{}'", device.get_driver_name());
 

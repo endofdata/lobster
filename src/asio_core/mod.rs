@@ -373,6 +373,7 @@ impl fmt::Debug for TimeInfo {
 	}
 }
 
+
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq)]
 pub enum TimeCodeFlags
@@ -443,6 +444,40 @@ impl fmt::Debug for Time {
 			.field("time_info", &self.time_info)
 			.field("time_code", &self.time_code)
 			.finish()
+	}
+}
+
+#[derive(Debug)]
+pub enum ErrorSource {
+	Other,
+	System(HRESULT),
+	ASIO(ASIOError)
+}
+
+#[derive(Debug)]
+pub struct Error {
+	source: ErrorSource,
+	description: String
+}
+
+impl Error {
+	pub fn from_other(description: &str) -> Error {
+		Error::from_source(description, ErrorSource::Other)
+	}
+
+	pub fn from_hresult(description: &str, hresult: HRESULT) -> Error {
+		Error::from_source(description, ErrorSource::System(hresult))
+	}
+
+	pub fn from_asio(description: &str, asio: ASIOError) -> Error {
+		Error::from_source(description, ErrorSource::ASIO(asio))
+	}
+
+	pub fn from_source(description: &str, source: ErrorSource) -> Error {
+		Error {
+			description: String::from(description),
+			source 
+		}
 	}
 }
 
