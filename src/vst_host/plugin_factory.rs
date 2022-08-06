@@ -1,10 +1,9 @@
 use super::IPluginFactory;
-use com::AbiTransferable;
 use libloading::Library;
 use super::pfactory_info::PFactoryInfo;
 
 pub struct PluginFactory {
-	vst: Library,
+	vst: Box<Library>,
 	factory: IPluginFactory
 }
 
@@ -12,12 +11,17 @@ impl PluginFactory {
 	pub fn load_vst(library_path: &str) -> Result<PluginFactory, Box<dyn std::error::Error>> {
 		unsafe {
 			let vst = libloading::Library::new(library_path)?;		
-			let get_factory: libloading::Symbol<unsafe extern fn() -> IPluginFactory> = vst.get(b"GetPluginFactory")?;
-			let factory = get_factory();
-			Ok(PluginFactory {
-				vst,
-				factory: factory
-			})
+			let get_factory: libloading::Symbol<unsafe extern fn() -> Option<IPluginFactory>> = vst.get(b"GetPluginFactory")?;
+			match get_factory() {
+				Some(factory) => {
+					Ok(PluginFactory {
+						vst: Box::new(vst),
+						factory: factory
+					})
+				},
+				// TODO: How to transport this error info in a std::error::Error?
+				None => panic!("Failed to call GetPluginFactory()")
+			}
 		}
 	}
 
@@ -30,10 +34,3 @@ impl PluginFactory {
 	}
 }
 
-impl Drop for PluginFactory {
-	fn drop(&mut self) {
-		unsafe {
-			self.factory.Release();
-		}
-	}
-}
