@@ -78,8 +78,37 @@ fn empty_guid() -> com::sys::GUID {
 	}
 }
 
-com::interfaces! {
+#[derive(Debug)]
+pub enum ErrorSource {
+	Other,
+	System(HRESULT)
+}
 
+#[derive(Debug)]
+pub struct Error {
+	source: ErrorSource,
+	description: String
+}
+
+impl Error {
+	pub fn from_other(description: &str) -> Error {
+		Error::from_source(description, ErrorSource::Other)
+	}
+
+	pub fn from_hresult(description: &str, hresult: HRESULT) -> Error {
+		Error::from_source(description, ErrorSource::System(hresult))
+	}
+
+	pub fn from_source(description: &str, source: ErrorSource) -> Error {
+		Error {
+			description: String::from(description),
+			source 
+		}
+	}
+}
+
+
+com::interfaces! {
 
 	#[uuid("58E595CC-DB2D-4969-8B6A-AF8C36A664E5")]
 	pub unsafe interface IHostApplication : IUnknown {	

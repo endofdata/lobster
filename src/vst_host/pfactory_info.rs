@@ -66,4 +66,8 @@ impl PFactoryInfo {
 		string_from(&self.email, false)
 	}
 
+	pub fn get_flags(&self) -> FactoryFlags {
+		self.flags
+	}
+
 }
