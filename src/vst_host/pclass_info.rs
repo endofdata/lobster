@@ -1,4 +1,4 @@
-use super::{class_cardinality::ClassCardinality, utf8_copy, utf16_copy_w, empty_guid};
+use super::{class_cardinality::ClassCardinality, utf8_copy, utf16_copy_w, empty_guid, string_from, string_from_w};
 
 pub const CATEGORY_SIZE : usize = 32;
 pub const NAME_SIZE : usize = 64;
@@ -134,5 +134,64 @@ impl PClassInfoW {
 		utf16_copy_w(vendor, &mut self.vendor);
 		utf16_copy_w(version, &mut self.version);
 		utf16_copy_w(sdk_version, &mut self.sdk_version);
+	}
+}
+
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ClassInfo {
+	cid: com::IID,
+	cardinality: ClassCardinality,
+	class_flags: u32,
+	pub category: String,
+	pub name: String,
+	pub sub_categories: String,
+	pub vendor: String,
+	pub version: String,
+	pub sdk_version: String
+}
+
+impl ClassInfo {
+	pub fn from_class_info(src: &PClassInfo) -> ClassInfo {
+		ClassInfo { 
+			cid: src.cid, 
+			cardinality: src.cardinality, 
+			class_flags: 0, 
+			category: string_from(&src.category, false), 
+			name: string_from(&src.name, false), 
+			sub_categories: String::new(), 
+			vendor: String::new(), 
+			version: String::new(), 
+			sdk_version: String::new()
+		}
+	}
+
+	pub fn from_class_info_2(src: &PClassInfo2) -> ClassInfo {
+		ClassInfo { 
+			cid: src.cid, 
+			cardinality: src.cardinality, 
+			class_flags: src.class_flags, 
+			category: string_from(&src.category, false), 
+			name: string_from(&src.name, false), 
+			sub_categories: string_from(&src.sub_categories, false), 
+			vendor: string_from(&src.vendor, false), 
+			version: string_from(&src.version, false), 
+			sdk_version: string_from(&src.sdk_version, false)
+		}
+	}
+
+	pub fn from_class_info_w(src: &PClassInfoW) -> ClassInfo {
+		ClassInfo { 
+			cid: src.cid, 
+			cardinality: src.cardinality, 
+			class_flags: src.class_flags, 
+			category: string_from(&src.category, false), 
+			name: string_from_w(&src.name), 
+			sub_categories: string_from(&src.sub_categories, false), 
+			vendor: string_from_w(&src.vendor), 
+			version: string_from_w(&src.version), 
+			sdk_version: string_from_w(&src.sdk_version)
+		}
 	}
 }

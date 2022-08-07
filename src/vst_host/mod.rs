@@ -4,8 +4,6 @@ mod pfactory_info;
 mod pclass_info;
 pub mod plugin_factory;
 
-use std::char::decode_utf16;
-
 use com::sys::HRESULT;
 use com::interfaces::IUnknown;
 use pclass_info::{PClassInfo, PClassInfo2, PClassInfoW};
@@ -61,12 +59,14 @@ fn string_from(value: &[u8], is_utf16: bool) -> String {
 	}
 	else {
 		// TODO: Ist THIS really required?!? Only to get all bytes before the zero and forward it?!?
-		String::from_utf8(value.iter().take_while(|b| **b != 0u8).map(|b| *b).collect()).unwrap()
+		String::from_utf8(value.iter().map(|b| *b).take_while(|b| *b != 0u8).collect()).unwrap()
 	}
 }
 
+#[allow(dead_code)]
 fn string_from_w(value: &[u16]) -> String {
-	String::from_utf16(value).unwrap()
+	let vec : Vec<u16> = value.iter().map(|w| *w).take_while(|w| *w != 0u16).collect();
+	String::from_utf16(&vec).unwrap()
 }
 
 fn empty_guid() -> com::sys::GUID {
@@ -79,17 +79,20 @@ fn empty_guid() -> com::sys::GUID {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ErrorSource {
 	Other,
 	System(HRESULT)
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Error {
 	source: ErrorSource,
 	description: String
 }
 
+#[allow(dead_code)]
 impl Error {
 	pub fn from_other(description: &str) -> Error {
 		Error::from_source(description, ErrorSource::Other)
