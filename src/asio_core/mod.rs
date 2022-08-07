@@ -455,6 +455,7 @@ pub enum ErrorSource {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Error {
 	source: ErrorSource,
 	description: String

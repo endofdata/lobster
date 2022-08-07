@@ -32,51 +32,56 @@ impl DeviceFactory {
 	) -> Result<impl ASIODeviceType, Error> {
 		match create_device(&clsid) {
 			Ok(iasio) => {
-				let driver_name = DeviceFactory::get_driver_name(&iasio)?;
-				let pref_buffer_size = DeviceFactory::get_buffer_size(&iasio)?;
-				let (max_input_channels, max_output_channels) =
-					DeviceFactory::get_channel_count(&iasio)?;
-				let num_input_channels = core::cmp::min(max_input_channels, 2);
-				let num_output_channels = core::cmp::min(max_output_channels, 2);
-				let callbacks = Box::new(DeviceSingleton::init_callbacks());
+				match DeviceFactory::init_device(&iasio) {
+					Ok(()) => {
+						let driver_name = DeviceFactory::get_driver_name(&iasio)?;
+						let pref_buffer_size = DeviceFactory::get_buffer_size(&iasio)?;
+						let (max_input_channels, max_output_channels) =
+							DeviceFactory::get_channel_count(&iasio)?;
+						let num_input_channels = core::cmp::min(max_input_channels, 2);
+						let num_output_channels = core::cmp::min(max_output_channels, 2);
+						let callbacks = Box::new(DeviceSingleton::init_callbacks());
 
-				let buffer_infos = DeviceFactory::create_buffers(
-					&iasio,
-					num_input_channels,
-					num_output_channels,
-					pref_buffer_size,
-					&callbacks,
-				)?;
+						let buffer_infos = DeviceFactory::create_buffers(
+							&iasio,
+							num_input_channels,
+							num_output_channels,
+							pref_buffer_size,
+							&callbacks,
+						)?;
 
-				// TODO: Is it sufficient to peek the sample type from the first available output channel?
-				let mut channel_info = ChannelInfo::new_for(ASIOBool::False, 0);
+						// TODO: Is it sufficient to peek the sample type from the first available output channel?
+						let mut channel_info = ChannelInfo::new_for(ASIOBool::False, 0);
 
-				unsafe {
-					iasio.get_channel_info(&mut channel_info);
-				}
+						unsafe {
+							iasio.get_channel_info(&mut channel_info);
+						}
 
-				match channel_info.sample_type {
-					ASIOSampleType::Int32LSB => Ok(ASIODevice::<i32>::new(
-						iasio,
-						driver_name,
-						num_input_channels,
-						num_output_channels,
-						pref_buffer_size,
-						buffer_infos,
-						callbacks,
-						process,
-					)),
-					_ => Err(Error::from_other(&format!(
-						"Unsupported sample type '{:?}'.",
-						channel_info.sample_type
-					))),
+						match channel_info.sample_type {
+							ASIOSampleType::Int32LSB => Ok(ASIODevice::<i32>::new(
+								iasio,
+								driver_name,
+								num_input_channels,
+								num_output_channels,
+								pref_buffer_size,
+								buffer_infos,
+								callbacks,
+								process,
+							)),
+							_ => Err(Error::from_other(&format!(
+								"Unsupported sample type '{:?}'.",
+								channel_info.sample_type
+							))),
+						}
+					}
+					Err(err) => Err(err),
 				}
 			}
 			Err(hr) => Err(Error::from_hresult("Failed to create ASIO device", hr)),
 		}
 	}
 
-	fn get_driver_name(iasio: &IASIO) -> Result<String, Error> {
+	fn init_device(iasio: &IASIO) -> Result<(), Error> {
 		let mut driver_info = DriverInfo {
 			asio_version: 2,
 			driver_version: 0,
@@ -89,17 +94,23 @@ impl DeviceFactory {
 
 		unsafe {
 			match iasio.init(driver_info_ptr as *mut ()) {
-				ASIOBool::False => Err(Error::from_other(&format!("Driver initialization failed: {}", DeviceFactory::get_error_message(&iasio)))),
-				ASIOBool::True => {
-					let mut buffer = vec![0u8; 128];
-					let ptr = buffer.as_mut_ptr();
-					iasio.get_driver_name(ptr);
-
-					let trimmed: Vec<u8> =
-						buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
-					return Ok(String::from_utf8(trimmed).expect("Driver name is valid UTF-8"));
-				}
+				ASIOBool::False => Err(Error::from_other(&format!(
+					"Driver initialization failed: {}",
+					DeviceFactory::get_error_message(&iasio)
+				))),
+				ASIOBool::True => Ok(()),
 			}
+		}
+	}
+
+	fn get_driver_name(iasio: &IASIO) -> Result<String, Error> {
+		unsafe {
+			let mut buffer = vec![0u8; 128];
+			let ptr = buffer.as_mut_ptr();
+			iasio.get_driver_name(ptr);
+
+			let trimmed: Vec<u8> = buffer.iter().take_while(|c| **c != 0u8).cloned().collect();
+			return Ok(String::from_utf8(trimmed).expect("Driver name is valid UTF-8"));
 		}
 	}
 
@@ -116,7 +127,7 @@ impl DeviceFactory {
 				&mut granularity,
 			) {
 				ASIOError::Ok => Ok(pref_buffer_size),
-				other => Err(Error::from_asio("Failed to get buffer size", other))
+				other => Err(Error::from_asio("Failed to get buffer size", other)),
 			}
 		}
 	}
@@ -128,7 +139,7 @@ impl DeviceFactory {
 		unsafe {
 			match iasio.get_channels(&mut max_input_channels, &mut max_output_channels) {
 				ASIOError::Ok => Ok((max_input_channels, max_output_channels)),
-				other => Err(Error::from_asio("Failed to get channels", other))
+				other => Err(Error::from_asio("Failed to get channels", other)),
 			}
 		}
 	}
