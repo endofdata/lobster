@@ -141,9 +141,9 @@ impl PClassInfoW {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ClassInfo {
-	cid: com::IID,
-	cardinality: ClassCardinality,
-	class_flags: u32,
+	pub cid: com::IID,
+	pub cardinality: ClassCardinality,
+	pub class_flags: u32,
 	pub category: String,
 	pub name: String,
 	pub sub_categories: String,

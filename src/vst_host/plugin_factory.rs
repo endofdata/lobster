@@ -1,5 +1,7 @@
-use super::{IPluginFactory,IPluginFactory2,IPluginFactory3};
+use super::{IPluginFactory,IPluginFactory2,IPluginFactory3, as_fid_string, IComponent};
 use super::factory_flags::FactoryFlags;
+use com::Interface;
+use com::sys::FAILED;
 use libloading::Library;
 use super::pfactory_info::PFactoryInfo;
 use super::pclass_info::{PClassInfo, PClassInfo2, PClassInfoW, ClassInfo};
@@ -13,10 +15,22 @@ impl PluginLibrary {
 	pub fn load(library_path: &str) -> Result<PluginLibrary, Error> {
 		unsafe {
 			match libloading::Library::new(library_path) {
-				Ok(vst) => Ok(PluginLibrary { vst }),
+				Ok(vst) => Ok(PluginLibrary::new(vst)),
 				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", library_path, error))) 
 			}
 		}
+	}
+
+	pub fn new(vst: Library) -> PluginLibrary {
+		unsafe {
+			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = vst.get(b"InitDll");
+			match opt_method {
+				Ok(init_dll) => init_dll(),
+				// method is optional
+				Err(_) => ()
+			}
+		}
+		PluginLibrary { vst }
 	}
 
 	pub fn get_factory(&self)  -> Result<PluginFactory, Error> {
@@ -33,6 +47,19 @@ impl PluginLibrary {
 				Err(error) => Err(Error::from_other(&format!("Missing entry point 'GetPluginFactory' in VST: {:?}", error)))
 			}
 		}
+	}
+}
+
+impl Drop for PluginLibrary {
+	fn drop(&mut self) {
+		unsafe {
+			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = self.vst.get(b"ExitDll");
+			match opt_method {
+				Ok(exit_dll) => exit_dll(),
+				// method is optional
+				Err(_) => ()
+			}
+		}		
 	}
 }
 
@@ -68,13 +95,23 @@ impl PluginFactory {
 		}
 	}
 
-	pub fn count_classes(&self) -> usize {
+	// TODO: Create an IAudioProcessor instead of IComponent
+	pub fn create_audio_module(&self) -> Result<IComponent, Error> {
+		self.create_component::<IComponent>("Audio Module Class")
+	}
+
+	// TODO: Create an IEditController instead of IComponent
+	pub fn create_component_controller(&self) -> Result<IComponent, Error> {
+		self.create_component::<IComponent>("Component Controller Class")
+	}
+
+	fn count_classes(&self) -> usize {
 		unsafe {
 			self.factory.countClasses() as usize
 		}
 	}
 
-	pub fn get_class_info(&self, index: usize) -> Option<ClassInfo> {
+	fn get_class_info(&self, index: usize) -> Option<ClassInfo> {
 		if index >= self.count_classes() {
 			return None
 		}
@@ -106,6 +143,42 @@ impl PluginFactory {
 			}
 		}
 
+	}
+
+	fn create_component<T: Interface>(&self, category: &str) -> Result<T, Error> {
+		match self.find_class_info(category) {
+			Some(class_info) => self.create_instance::<T>(&class_info.cid, &T::IID),
+			None => Err(Error::from_other(&format!("No class for category {}.", category)))
+		}
+	}
+
+	fn find_class_info(&self, category: &str) -> Option<ClassInfo> {
+		for c in 0..self.count_classes() {
+			if let Some(class_info) = self.get_class_info(c) {
+					if class_info.category == category {
+						return Some(class_info);
+					}
+				}
+		}
+		None
+	}
+
+	fn create_instance<T>(&self, cid: &com::sys::CLSID, iid: &com::sys::IID) -> Result<T, Error> {
+		let mut opt_instance : Option<T> = None;
+
+		let hr = unsafe {
+			// about the beauty of type-safety...
+			self.factory.createInstance(cid, iid, &mut opt_instance as *mut _ as *mut *mut std::ffi::c_void)
+		};
+
+		if FAILED(hr) {
+			return Err(Error::from_hresult("Cannot create instance", hr));
+		}
+
+		match opt_instance {
+			Some(instance) => Ok(instance),
+			None => Err(Error::from_other("Create instance returned null"))
+		}
 	}
 }
 

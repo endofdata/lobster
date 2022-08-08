@@ -27,6 +27,8 @@ fn main() {
 			data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
 		};
 
+		println!("FIDString: {}", vst_host::as_fid_string(&clsid));
+
 		match asio_core::device_factory::DeviceFactory::create_device(clsid, process_buffers) {
 			Err(error) => println!("Failed to create ASIO device: {:?}", error),
 			Ok(device) => {
@@ -50,7 +52,7 @@ fn main() {
 	}
 
 	println!("Shutting down");
-	
+
 	unsafe {
 		com::sys::CoUninitialize();
 	}
@@ -73,25 +75,6 @@ fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {
 	}
 }
 
-fn show_factory_info(factory: &PluginFactory) {
-	println!(
-		"Vendor: '{}', E-Mail: '{}', Url: '{}'",
-		factory.vendor, factory.email, factory.url
-	);
-
-	let class_count = factory.count_classes();
-	if class_count == 0 {
-		println!("No classes defined");
-	} else {
-		for c in 0..class_count {
-			match factory.get_class_info(c) {
-				Some(class_info) => println!("Class {}: {:#?}", c, class_info),
-				None => println!("Class {}: No information", c),
-			}
-		}
-	}
-}
-
 fn load_vst(library_path: &str) {
 
 	// the lifetime of the Library must exceed the lifetime of all interfaces
@@ -99,7 +82,10 @@ fn load_vst(library_path: &str) {
 		Ok(vst) => match vst.get_factory() {
 			Ok(factory) => {
 				println!("Loaded VST from '{}'", library_path);
-				show_factory_info(&factory);
+				match factory.create_audio_module() {
+					Ok(_) => println!("Got an audio module"),
+					Err(error) => println!("Got an error: {:?}", error)
+				};
 			}
 			Err(error) => println!("Failed to create factory: {:?}", error),
 		},
