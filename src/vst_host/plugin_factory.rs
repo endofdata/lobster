@@ -1,4 +1,4 @@
-use super::{IPluginFactory,IPluginFactory2,IPluginFactory3, as_fid_string, IComponent};
+use super::{IPluginFactory,IPluginFactory2,IPluginFactory3, IComponent};
 use super::factory_flags::FactoryFlags;
 use com::Interface;
 use com::sys::FAILED;

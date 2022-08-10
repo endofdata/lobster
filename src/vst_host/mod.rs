@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+
+mod audio_bus_buffers;
 mod bus_direction;
 mod bus_flags;
 mod bus_info;
@@ -8,12 +11,17 @@ mod io_mode;
 mod media_type;
 mod pclass_info;
 mod pfactory_info;
-pub mod plugin_factory;
+mod vst_event;
+mod process_data;
+mod process_context;
+mod process_setup;
 mod routing_info;
+mod speaker_arrangement;
+pub mod plugin_factory;
 
 use std::ffi::c_void;
 
-use com::sys::{HRESULT, GUID};
+use com::sys::{GUID, HRESULT};
 use com::{interfaces::IUnknown, IID};
 use pclass_info::{PClassInfo, PClassInfo2, PClassInfoW};
 
@@ -22,7 +30,11 @@ use self::bus_info::BusInfo;
 use self::io_mode::IoMode;
 use self::media_type::MediaType;
 use self::pfactory_info::PFactoryInfo;
+use self::process_data::ProcessData;
+use self::process_setup::ProcessSetup;
 use self::routing_info::RoutingInfo;
+use self::speaker_arrangement::SpeakerArrangement;
+use self::vst_event::Event;
 
 fn utf16_copy(value: &str, target: &mut [u8]) -> usize {
 	let mut pos = 0;
@@ -131,6 +143,13 @@ impl Error {
 	}
 }
 
+pub type ParamID = u32;
+pub type ParamValue = f64;
+pub type TQuarterNotes = f64;
+pub type TSamples = i64;
+pub type NoteExpressionTypeID = u32;
+pub type NoteExpressionValue = f64;
+
 com::interfaces! {
 
 	#[uuid("22888DDB-156E-45AE-8358-B34808190625")]
@@ -204,4 +223,56 @@ com::interfaces! {
 
 		pub fn tell(&self, pos: *mut i64) -> HRESULT;
 	}
+
+	#[uuid("42043F99-B7DA-453C-A569-E79D9AAEC33D")]
+	pub unsafe interface IAudioProcessor : IUnknown	{
+		pub fn setBusArrangements(&self, inputs: *const SpeakerArrangement, numIns: i32, outputs: *const SpeakerArrangement, numOuts: i32) -> HRESULT;
+
+		pub fn getBusArrangement (&self, dir: BusDirection, index: i32, arr: *mut SpeakerArrangement) -> HRESULT;
+
+		// TODO: Use enum for symbolicSampleSize
+		pub fn canProcessSampleSize(&self, symbolicSampleSize: i32) -> HRESULT;
+
+		pub fn getLatencySamples(&self) -> u32;
+
+		pub fn setupProcessing (&self, setup: *const ProcessSetup) -> HRESULT;
+
+		pub fn setProcessing(&self, state: bool) -> HRESULT;
+
+		pub fn process (&self, data: *const ProcessData) -> HRESULT;
+
+		pub fn getTailSamples(&self) -> u32;
+	}
+
+	#[uuid("A4779663-0BB6-4A56-B443-84A8466FEB9D")]
+	pub unsafe interface IParameterChanges : IUnknown {
+		pub fn getParameterCount(&self) -> i32;
+
+		pub fn getParameterData(&self, index: i32) -> *mut IParamValueQueue;
+
+		pub fn addParameterData(&self, id: *const ParamID, index: *mut i32) -> *mut IParamValueQueue;
+	}
+
+	#[uuid("01263A18-ED07-4F6F-98C9-D3564686F9BA")]
+	pub unsafe interface IParamValueQueue : IUnknown {
+		pub fn getParameterId(&self) -> ParamID;
+
+		pub fn getPointCount(&self) -> i32;
+
+		pub fn getPoint(&self, index: i32, sampleOffset: *mut i32, value: *mut ParamValue) -> HRESULT;
+
+		pub fn addPoint(&self, sampleOffset: i32, value: ParamValue, index: *mut i32) -> HRESULT;
+	}
+
+
+	#[uuid("3A2C4214-3463-49FE-B2C4-F397B9695A44")]
+	pub unsafe interface IEventList : IUnknown {
+		pub fn getEventCount(&self) -> i32;
+
+		pub fn getEvent(&self, index: i32, e: *mut Event) -> HRESULT;
+
+		pub fn addEvent(&self, e: *const Event) -> HRESULT;
+	}
+
+
 }

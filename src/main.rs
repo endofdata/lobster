@@ -3,7 +3,7 @@ mod vst_host;
 
 use std::thread;
 use std::time::Duration;
-use vst_host::plugin_factory::{PluginFactory, PluginLibrary};
+use vst_host::plugin_factory::{PluginLibrary};
 
 fn main() {
 	let hr = unsafe {
