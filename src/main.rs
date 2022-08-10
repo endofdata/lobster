@@ -82,8 +82,8 @@ fn load_vst(library_path: &str) {
 		Ok(vst) => match vst.get_factory() {
 			Ok(factory) => {
 				println!("Loaded VST from '{}'", library_path);
-				match factory.create_audio_module() {
-					Ok(_) => println!("Got an audio module"),
+				match factory.create_audio_processor() {
+					Ok(_) => println!("Got an audio processor"),
 					Err(error) => println!("Got an error: {:?}", error)
 				};
 			}

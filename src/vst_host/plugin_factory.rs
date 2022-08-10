@@ -1,4 +1,4 @@
-use super::{IPluginFactory,IPluginFactory2,IPluginFactory3, IComponent};
+use super::{IPluginFactory,IPluginFactory2,IPluginFactory3, IComponent, IAudioProcessor};
 use super::factory_flags::FactoryFlags;
 use com::Interface;
 use com::sys::FAILED;
@@ -95,9 +95,8 @@ impl PluginFactory {
 		}
 	}
 
-	// TODO: Create an IAudioProcessor instead of IComponent
-	pub fn create_audio_module(&self) -> Result<IComponent, Error> {
-		self.create_component::<IComponent>("Audio Module Class")
+	pub fn create_audio_processor(&self) -> Result<IAudioProcessor, Error> {
+		self.create_component::<IAudioProcessor>("Audio Module Class")
 	}
 
 	// TODO: Create an IEditController instead of IComponent
