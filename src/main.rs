@@ -3,7 +3,8 @@ mod vst_host;
 
 use std::thread;
 use std::time::Duration;
-use vst_host::plugin_factory::{PluginLibrary};
+use vst_host::{IAudioProcessor, Error};
+use vst_host::plugin_library::PluginLibrary;
 
 fn main() {
 	let hr = unsafe {
@@ -75,20 +76,10 @@ fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {
 	}
 }
 
-fn load_vst(library_path: &str) {
-
+fn load_vst(library_path: &str) -> Result<IAudioProcessor, Error> {
 	// the lifetime of the Library must exceed the lifetime of all interfaces
 	match PluginLibrary::load(library_path) {
-		Ok(vst) => match vst.get_factory() {
-			Ok(factory) => {
-				println!("Loaded VST from '{}'", library_path);
-				match factory.create_audio_processor() {
-					Ok(_) => println!("Got an audio processor"),
-					Err(error) => println!("Got an error: {:?}", error)
-				};
-			}
-			Err(error) => println!("Failed to create factory: {:?}", error),
-		},
-		Err(error) => println!("Failed to load plugin: {:?}", error),
-	};
+		Ok(vst) => vst.get_audio_processor(),
+		Err(error) => Err(error)
+	}
 }

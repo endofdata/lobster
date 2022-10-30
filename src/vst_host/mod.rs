@@ -17,7 +17,8 @@ mod process_context;
 mod process_setup;
 mod routing_info;
 mod speaker_arrangement;
-pub mod plugin_factory;
+mod plugin_factory;
+pub mod plugin_library;
 
 use std::ffi::c_void;
 

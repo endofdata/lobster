@@ -2,66 +2,10 @@ use super::{IPluginFactory,IPluginFactory2,IPluginFactory3, IComponent, IAudioPr
 use super::factory_flags::FactoryFlags;
 use com::Interface;
 use com::sys::FAILED;
-use libloading::Library;
 use super::pfactory_info::PFactoryInfo;
 use super::pclass_info::{PClassInfo, PClassInfo2, PClassInfoW, ClassInfo};
 use super::Error;
 
-pub struct PluginLibrary {
-	vst: Library
-}
-
-impl PluginLibrary {
-	pub fn load(library_path: &str) -> Result<PluginLibrary, Error> {
-		unsafe {
-			match libloading::Library::new(library_path) {
-				Ok(vst) => Ok(PluginLibrary::new(vst)),
-				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", library_path, error))) 
-			}
-		}
-	}
-
-	pub fn new(vst: Library) -> PluginLibrary {
-		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = vst.get(b"InitDll");
-			match opt_method {
-				Ok(init_dll) => init_dll(),
-				// method is optional
-				Err(_) => ()
-			}
-		}
-		PluginLibrary { vst }
-	}
-
-	pub fn get_factory(&self)  -> Result<PluginFactory, Error> {
-		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn() -> Option<IPluginFactory>>, libloading::Error> = self.vst.get(b"GetPluginFactory");
-			match opt_method {			
-				Ok(get_factory) => match get_factory() {
-					Some(factory) => {
-						let _ = factory.countClasses();
-						Ok(PluginFactory::new(factory))
-					},
-					None => Err(Error::from_other("VST.GetPluginFactory() returned null."))
-				},
-				Err(error) => Err(Error::from_other(&format!("Missing entry point 'GetPluginFactory' in VST: {:?}", error)))
-			}
-		}
-	}
-}
-
-impl Drop for PluginLibrary {
-	fn drop(&mut self) {
-		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = self.vst.get(b"ExitDll");
-			match opt_method {
-				Ok(exit_dll) => exit_dll(),
-				// method is optional
-				Err(_) => ()
-			}
-		}		
-	}
-}
 
 #[allow(dead_code)]
 pub struct PluginFactory {
@@ -76,7 +20,7 @@ pub struct PluginFactory {
 
 #[allow(dead_code)]
 impl PluginFactory {
-	fn new(factory: IPluginFactory) -> PluginFactory {
+	pub fn new(factory: IPluginFactory) -> PluginFactory {
 		let mut factory_info = PFactoryInfo::new();
 		unsafe {
 			factory.getFactoryInfo(&mut factory_info);
@@ -180,4 +124,3 @@ impl PluginFactory {
 		}
 	}
 }
-
