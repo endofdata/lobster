@@ -29,6 +29,21 @@ impl PluginLibrary {
 		PluginLibrary { vst }
 	}
 
+	pub fn close(self) -> Result<(), Error> {
+		unsafe {
+			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = self.vst.get(b"ExitDll");
+			match opt_method {
+				Ok(exit_dll) => exit_dll(),
+				// method is optional
+				Err(_) => ()
+			}
+		}
+		match self.vst.close() {
+			Ok(()) => Ok(()),
+			Err(e) => Err(Error::from_other(&format!("Error closing library: {:?}", e)))
+		}
+	}
+
 	fn get_factory(&self)  -> Result<PluginFactory, Error> {
 		unsafe {
 			let opt_method : Result<libloading::Symbol<unsafe extern fn() -> Option<IPluginFactory>>, libloading::Error> = self.vst.get(b"GetPluginFactory");
@@ -45,23 +60,10 @@ impl PluginLibrary {
 		}
 	}
 
-	pub fn get_audio_processor(self) -> Result<IAudioProcessor, Error> {
+	pub fn get_audio_processor(&self) -> Result<IAudioProcessor, Error> {
 		match self.get_factory() {
 			Ok(factory) => factory.create_audio_processor(),
 			Err(error) => Err(error)	
 		}
-	}
-}
-
-impl Drop for PluginLibrary {
-	fn drop(&mut self) {
-		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = self.vst.get(b"ExitDll");
-			match opt_method {
-				Ok(exit_dll) => exit_dll(),
-				// method is optional
-				Err(_) => ()
-			}
-		}		
 	}
 }
