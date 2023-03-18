@@ -1,10 +1,8 @@
 mod asio_core;
 mod vst_host;
 
-use std::thread;
-use std::time::Duration;
-use vst_host::{IAudioProcessor, Error};
-use vst_host::plugin_library::PluginLibrary;
+use crate::asio_core::device_factory::DeviceFactory;
+use crate::vst_host::host::Host;
 
 fn main() {
 	let hr = unsafe {
@@ -14,72 +12,42 @@ fn main() {
 		)
 	};
 
-	if !com::sys::FAILED(hr) {
-
-		let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
-
-		load_vst(library_path);
-
-		// Yamaha Steinberg USB ASIO
-		let clsid = com::CLSID {
-			data1: 0xCB7F9FFD,
-			data2: 0xA33B,
-			data3: 0x48B2,
-			data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
-		};
-
-		println!("FIDString: {}", vst_host::as_fid_string(&clsid));
-
-		match asio_core::device_factory::DeviceFactory::create_device(clsid, process_buffers) {
-			Err(error) => println!("Failed to create ASIO device: {:?}", error),
-			Ok(device) => {
-				println!("Created ASIO device '{}'", device.get_driver_name());
-
-				device.set_sample_rate(48000.0f64);
-
-				println!("ASIO device starting");
-				device.start();
-				println!("ASIO Device started");
-
-				thread::sleep(Duration::from_secs(2));
-
-				println!("ASIO device stopping");
-				device.stop();
-				println!("ASIO device stopped");
-
-				asio_core::device_factory::DeviceFactory::drop_device();
-			}
-		}		
+	if com::sys::FAILED(hr) {
+		panic!("COM initialization failed with error code {:X}", hr);
 	}
 
+
+	// Yamaha Steinberg USB ASIO
+	let clsid = com::CLSID {
+		data1: 0xCB7F9FFD,
+		data2: 0xA33B,
+		data3: 0x48B2,
+		data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
+	};
+	
+	// println!("FIDString: {}", vst_host::as_fid_string(&clsid));
+
+	let mut host = Host::new(clsid);
+
+	let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
+
+	let vst_id = match host.add_plugin(library_path) {
+		Err(error) => panic!("Failed to add plugin '{}': {:?}", library_path, error),
+		Ok(id) => id
+	};
+
+	// TODO: use vst for audio processing / creation
+	let vst = host.get_audio_processor(&vst_id).expect("Failed to create audio processor.");
+
 	println!("Shutting down");
+
+	// drop VSTs and host before uninitializing COM
+	drop(vst);
+	drop(host);
 
 	unsafe {
 		com::sys::CoUninitialize();
 	}
 }
 
-fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {
-	let ins = input.len() as i32;
-	let outs = outputs.len() as i32;
 
-	if ins >= 1 {
-		if outs == 2 {
-			for o in 0..outs {
-				let mut proc = input[0].iter().map(|s| *s * 1.0);
-				let dst = outputs[o as usize].iter_mut();
-				for target in dst {
-					*target = proc.next().expect("Not enough input data");
-				}
-			}
-		}
-	}
-}
-
-fn load_vst(library_path: &str) -> Result<IAudioProcessor, Error> {
-	// the lifetime of the Library must exceed the lifetime of all interfaces
-	match PluginLibrary::load(library_path) {
-		Ok(vst) => vst.get_audio_processor(),
-		Err(error) => Err(error)
-	}
-}
