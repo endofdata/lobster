@@ -18,7 +18,7 @@ impl<'a> Host<'a> {
 		Host {
 			device,
 			plugins: HashMap::<String, PluginLibrary>::new()
-		}	
+		}
 	}
 
 	pub fn add_plugin(&mut self, path: &str) -> Result<String, Error> {
@@ -35,23 +35,21 @@ impl<'a> Host<'a> {
 	}
 
 	pub fn get_audio_processor(&self, id: &str) -> Result<IAudioProcessor, Error> {
-		match self.plugins.get(id).and_then(|vst| Some(vst.get_audio_processor())) {
-			Some(r) => r,
-			None => Err(Error::from_other("Invalid VST id"))
-		}
+		self.plugins.get(id)
+			.ok_or_else(|| Error::from_other("Invalid VST id"))
+			.and_then(|vst| vst.get_audio_processor())
 	}
 
 	pub fn get_component(&self, id: &str) -> Result<IComponent, Error> {
-		match self.plugins.get(id).and_then(|vst| Some(vst.get_component())) {
-			Some(r) => r,
-			None => Err(Error::from_other("Invalid VST id"))
-		}
+		self.plugins.get(id)
+			.ok_or_else(|| Error::from_other("Invalid VST id"))
+			.and_then(|vst| vst.get_component())
 	}
 
 	fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {
 		let ins = input.len() as i32;
 		let outs = outputs.len() as i32;
-	
+
 		if ins >= 1 {
 			if outs == 2 {
 				for o in 0..outs {
@@ -85,17 +83,17 @@ impl<'a> Host<'a> {
 	}
 
 					// device.set_sample_rate(48000.0f64);
-	
+
 				// println!("ASIO device starting");
 				// device.start();
 				// println!("ASIO Device started");
-	
+
 				// thread::sleep(Duration::from_secs(2));
-	
+
 				// println!("ASIO device stopping");
 				// device.stop();
 				// println!("ASIO device stopped");
-	
+
 				// asio_core::device_factory::DeviceFactory::drop_device();
 }
 
