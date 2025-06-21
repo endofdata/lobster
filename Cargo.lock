@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "asiolib"
 version = "0.1.0"
-source = "git+file:///D:/Gamer%20I5/Documents/Projects/Rust/asiolib#2db5fcb15aeb07737afd28f9f19628e8395ad2fd"
+source = "git+file:///D:/Gamer%20I5/Documents/Projects/Rust/asiolib#be233489dcfe7f4a46159d89828378576df843a3"
 dependencies = [
  "windows",
  "windows-core",
