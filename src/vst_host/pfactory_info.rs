@@ -14,16 +14,6 @@ pub struct PFactoryInfo {
 	flags: FactoryFlags
 }
 
-unsafe impl com::AbiTransferable for PFactoryInfo {
-    type Abi = Self;
-    fn get_abi(&self) -> Self::Abi {
-        *self
-    }
-    fn set_abi(&mut self) -> *mut Self::Abi {
-        self as *mut Self::Abi
-    }
-}
-
 impl PFactoryInfo {
 	pub fn new() -> PFactoryInfo {
 		PFactoryInfo {

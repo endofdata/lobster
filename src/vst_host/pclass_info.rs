@@ -1,4 +1,5 @@
 use super::{class_cardinality::ClassCardinality, utf8_copy, utf16_copy_w, empty_guid, string_from, string_from_w};
+use windows::core::GUID;
 
 pub const CATEGORY_SIZE : usize = 32;
 pub const NAME_SIZE : usize = 64;
@@ -8,7 +9,7 @@ pub const SUBCATEGORY_SIZE : usize = 128;
 
 #[repr(C)]
 pub struct PClassInfo {
-	cid: com::IID,
+	cid: GUID,
 	cardinality: ClassCardinality,
 	category: [u8; CATEGORY_SIZE],
 	name: [u8; NAME_SIZE]
@@ -16,21 +17,21 @@ pub struct PClassInfo {
 
 impl PClassInfo {
 	pub fn new() -> PClassInfo {
-		PClassInfo { 
+		PClassInfo {
 			cid: empty_guid(),
-			cardinality: ClassCardinality::NoValue, 
-			category: [0; CATEGORY_SIZE], 
+			cardinality: ClassCardinality::NoValue,
+			category: [0; CATEGORY_SIZE],
 			name: [0; NAME_SIZE]
 		}
 	}
 
-	pub fn new_with(cid: &com::IID, cardinality: ClassCardinality, category: &str, name: &str) -> PClassInfo {
+	pub fn new_with(cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str) -> PClassInfo {
 		let mut instance = PClassInfo::new();
 		instance.init(cid, cardinality, category, name);
 		instance
 	}
 
-	pub fn init(&mut self, cid: &com::IID, cardinality: ClassCardinality, category: &str, name: &str) {
+	pub fn init(&mut self, cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
 		utf8_copy(category, &mut self.category);
@@ -40,7 +41,7 @@ impl PClassInfo {
 
 #[repr(C)]
 pub struct PClassInfo2 {
-	cid: com::IID,
+	cid: GUID,
 	cardinality: ClassCardinality,
 	category: [u8; CATEGORY_SIZE],
 	name: [u8; NAME_SIZE],
@@ -53,10 +54,10 @@ pub struct PClassInfo2 {
 
 impl PClassInfo2 {
 	pub fn new() -> PClassInfo2 {
-		PClassInfo2 { 
+		PClassInfo2 {
 			cid: empty_guid(),
-			cardinality: ClassCardinality::NoValue, 
-			category: [0; CATEGORY_SIZE], 
+			cardinality: ClassCardinality::NoValue,
+			category: [0; CATEGORY_SIZE],
 			name: [0; NAME_SIZE],
 			class_flags: 0,
 			sub_categories: [0; SUBCATEGORY_SIZE],
@@ -66,14 +67,14 @@ impl PClassInfo2 {
 		}
 	}
 
-	pub fn new_with(cid: &com::IID, cardinality: ClassCardinality, category: &str, name: &str,
+	pub fn new_with(cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str,
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) -> PClassInfo2 {
 		let mut instance = PClassInfo2::new();
 		instance.init(cid, cardinality, category, name, class_flags, sub_categories, vendor, version, sdk_version);
 		instance
 	}
 
-	pub fn init(&mut self, cid: &com::IID, cardinality: ClassCardinality, category: &str, name: &str,
+	pub fn init(&mut self, cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str,
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
@@ -90,7 +91,7 @@ impl PClassInfo2 {
 
 #[repr(C)]
 pub struct PClassInfoW {
-	cid: com::IID,
+	cid: GUID,
 	cardinality: ClassCardinality,
 	category: [u8; CATEGORY_SIZE],
 	name: [u16; NAME_SIZE],
@@ -103,10 +104,10 @@ pub struct PClassInfoW {
 
 impl PClassInfoW {
 	pub fn new() -> PClassInfoW {
-		PClassInfoW { 
+		PClassInfoW {
 			cid: empty_guid(),
-			cardinality: ClassCardinality::NoValue, 
-			category: [0; CATEGORY_SIZE], 
+			cardinality: ClassCardinality::NoValue,
+			category: [0; CATEGORY_SIZE],
 			name: [0; NAME_SIZE],
 			class_flags: 0,
 			sub_categories: [0; SUBCATEGORY_SIZE],
@@ -116,14 +117,14 @@ impl PClassInfoW {
 		}
 	}
 
-	pub fn new_with(cid: &com::IID, cardinality: ClassCardinality, category: &str, name: &str,
+	pub fn new_with(cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str,
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) -> PClassInfoW {
 		let mut instance = PClassInfoW::new();
 		instance.init(cid, cardinality, category, name, class_flags, sub_categories, vendor, version, sdk_version);
 		instance
 	}
 
-	pub fn init(&mut self, cid: &com::IID, cardinality: ClassCardinality, category: &str, name: &str,
+	pub fn init(&mut self, cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str,
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
@@ -141,7 +142,7 @@ impl PClassInfoW {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ClassInfo {
-	pub cid: com::IID,
+	pub cid: GUID,
 	pub cardinality: ClassCardinality,
 	pub class_flags: u32,
 	pub category: String,
@@ -154,43 +155,43 @@ pub struct ClassInfo {
 
 impl ClassInfo {
 	pub fn from_class_info(src: &PClassInfo) -> ClassInfo {
-		ClassInfo { 
-			cid: src.cid, 
-			cardinality: src.cardinality, 
-			class_flags: 0, 
-			category: string_from(&src.category, false), 
-			name: string_from(&src.name, false), 
-			sub_categories: String::new(), 
-			vendor: String::new(), 
-			version: String::new(), 
+		ClassInfo {
+			cid: src.cid,
+			cardinality: src.cardinality,
+			class_flags: 0,
+			category: string_from(&src.category, false),
+			name: string_from(&src.name, false),
+			sub_categories: String::new(),
+			vendor: String::new(),
+			version: String::new(),
 			sdk_version: String::new()
 		}
 	}
 
 	pub fn from_class_info_2(src: &PClassInfo2) -> ClassInfo {
-		ClassInfo { 
-			cid: src.cid, 
-			cardinality: src.cardinality, 
-			class_flags: src.class_flags, 
-			category: string_from(&src.category, false), 
-			name: string_from(&src.name, false), 
-			sub_categories: string_from(&src.sub_categories, false), 
-			vendor: string_from(&src.vendor, false), 
-			version: string_from(&src.version, false), 
+		ClassInfo {
+			cid: src.cid,
+			cardinality: src.cardinality,
+			class_flags: src.class_flags,
+			category: string_from(&src.category, false),
+			name: string_from(&src.name, false),
+			sub_categories: string_from(&src.sub_categories, false),
+			vendor: string_from(&src.vendor, false),
+			version: string_from(&src.version, false),
 			sdk_version: string_from(&src.sdk_version, false)
 		}
 	}
 
 	pub fn from_class_info_w(src: &PClassInfoW) -> ClassInfo {
-		ClassInfo { 
-			cid: src.cid, 
-			cardinality: src.cardinality, 
-			class_flags: src.class_flags, 
-			category: string_from(&src.category, false), 
-			name: string_from_w(&src.name), 
-			sub_categories: string_from(&src.sub_categories, false), 
-			vendor: string_from_w(&src.vendor), 
-			version: string_from_w(&src.version), 
+		ClassInfo {
+			cid: src.cid,
+			cardinality: src.cardinality,
+			class_flags: src.class_flags,
+			category: string_from(&src.category, false),
+			name: string_from_w(&src.name),
+			sub_categories: string_from(&src.sub_categories, false),
+			vendor: string_from_w(&src.vendor),
+			version: string_from_w(&src.version),
 			sdk_version: string_from_w(&src.sdk_version)
 		}
 	}

@@ -51,7 +51,7 @@ impl PluginLibrary {
 				Ok(get_factory) => match get_factory() {
 					Some(factory) => {
 						let _ = factory.countClasses();
-						Ok(PluginFactory::new(factory))
+						PluginFactory::new(factory)
 					},
 					None => Err(Error::from_other("VST.GetPluginFactory() returned null."))
 				},

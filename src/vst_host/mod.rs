@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
 
 mod audio_bus_buffers;
 mod bus_direction;
@@ -23,11 +25,10 @@ pub mod host;
 
 use std::ffi::c_void;
 
-use com::sys::{GUID, HRESULT};
-use com::{interfaces::IUnknown, IID};
+use windows::core::{interface, GUID, HRESULT, IUnknown, IUnknown_Vtbl};
 use pclass_info::{PClassInfo, PClassInfo2, PClassInfoW};
 
-use crate::asio_core::ASIOError;
+use asiolib::ASIOError;
 
 use self::bus_direction::BusDirection;
 use self::bus_info::BusInfo;
@@ -102,8 +103,8 @@ fn string_from_w(value: &[u16]) -> String {
 	String::from_utf16(&vec).unwrap()
 }
 
-fn empty_guid() -> com::sys::GUID {
-	com::sys::GUID {
+fn empty_guid() -> windows::core::GUID {
+	windows::core::GUID {
 		data1: 0,
 		data2: 0,
 		data3: 0,
@@ -111,8 +112,9 @@ fn empty_guid() -> com::sys::GUID {
 	}
 }
 
-pub fn as_fid_string(guid: &com::sys::GUID) -> String {
-	guid.to_string()
+fn as_fid_string(guid: &windows::core::GUID) -> String {
+	// TODO: Check format (was: guid.to_string())
+	format!("{:?}", guid)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -132,19 +134,19 @@ pub struct Error {
 
 #[allow(dead_code)]
 impl Error {
-	pub fn from_other(description: &str) -> Error {
+	fn from_other(description: &str) -> Error {
 		Error::from_source(description, ErrorSource::Other)
 	}
 
-	pub fn from_hresult(description: &str, hresult: HRESULT) -> Error {
+	fn from_hresult(description: &str, hresult: HRESULT) -> Error {
 		Error::from_source(description, ErrorSource::System(hresult))
 	}
 
-	pub fn from_asio(description: &str, asio: ASIOError) -> Error {
+	fn from_asio(description: &str, asio: ASIOError) -> Error {
 		Error::from_source(description, ErrorSource::ASIO(asio))
 	}
 
-	pub fn from_source(description: &str, source: ErrorSource) -> Error {
+	fn from_source(description: &str, source: ErrorSource) -> Error {
 		Error {
 			description: description.into(),
 			source,
@@ -152,18 +154,18 @@ impl Error {
 	}
 }
 
-impl From<crate::asio_core::ErrorSource> for ErrorSource {
-	fn from(value: crate::asio_core::ErrorSource) -> Self {
+impl From<asiolib::ErrorSource> for ErrorSource {
+	fn from(value: asiolib::ErrorSource) -> Self {
 		match value {
-			crate::asio_core::ErrorSource::ASIO(asio) => ErrorSource::ASIO(asio),
-			crate::asio_core::ErrorSource::System(hr) => ErrorSource::System(hr),
-			crate::asio_core::ErrorSource::Other => ErrorSource::Other
+			asiolib::ErrorSource::ASIO(asio) => ErrorSource::ASIO(asio),
+			asiolib::ErrorSource::System(hr) => ErrorSource::System(hr),
+			_ => ErrorSource::Other
 		}
 	}
 }
 
-impl From<crate::asio_core::Error> for Error {
-	fn from(value: crate::asio_core::Error) -> Self {
+impl From<asiolib::Error> for Error {
+	fn from(value: asiolib::Error) -> Self {
 		Error {
 			description: format!("{:?}", value),
 			source: (*value.get_source()).into()
@@ -178,129 +180,123 @@ pub type TSamples = i64;
 pub type NoteExpressionTypeID = u32;
 pub type NoteExpressionValue = f64;
 
-com::interfaces! {
+#[interface("22888DDB-156E-45AE-8358-B34808190625")]
+pub unsafe trait IPluginBase : IUnknown {
+	fn initialize(&self, context: *const IUnknown) -> HRESULT;
 
-	#[uuid("22888DDB-156E-45AE-8358-B34808190625")]
-	pub unsafe interface IPluginBase : IUnknown {
-		pub fn initialize(&self, context: *const IUnknown) -> HRESULT;
+	fn terminate(&self, ) -> HRESULT;
+}
 
-		pub fn terminate(&self, ) -> HRESULT;
-	}
+#[interface("E831FF31-F2D5-4301-928E-BBEE25697802")]
+pub unsafe trait IComponent : IPluginBase {
+	fn getControllerClassId(&self, classId: GUID) -> HRESULT;
 
+	fn setIoMode(&self, mode: IoMode )-> HRESULT;
 
-	#[uuid("E831FF31-F2D5-4301-928E-BBEE25697802")]
-	pub unsafe interface IComponent : IPluginBase {
-		pub fn getControllerClassId(&self, classId: IID) -> HRESULT;
+	fn getBusCount(&self, media_type: MediaType, dir: BusDirection) -> i32;
 
-		pub fn setIoMode(&self, mode: IoMode )-> HRESULT;
+	fn getBusInfo(&self, media_type: MediaType, dir: BusDirection, index: i32, bus: *mut BusInfo) -> HRESULT;
 
-		pub fn getBusCount(&self, media_type: MediaType, dir: BusDirection) -> i32;
+	fn getRoutingInfo(&self, inInfo: *const RoutingInfo, outInfo: *mut RoutingInfo) -> HRESULT;
 
-		pub fn getBusInfo(&self, media_type: MediaType, dir: BusDirection, index: i32, bus: *mut BusInfo) -> HRESULT;
+	fn activateBus(&self, media_type: MediaType, dir: BusDirection, index: i32, state: bool) -> HRESULT;
 
-		pub fn getRoutingInfo(&self, inInfo: *const RoutingInfo, outInfo: *mut RoutingInfo) -> HRESULT;
+	fn setActive(&self, state: bool) -> HRESULT;
 
-		pub fn activateBus(&self, media_type: MediaType, dir: BusDirection, index: i32, state: bool) -> HRESULT;
+	fn setState(&self, state: *const IBStream) -> HRESULT;
 
-		pub fn setActive(&self, state: bool) -> HRESULT;
-
-		pub fn setState(&self, state: *const IBStream) -> HRESULT;
-
-		pub fn getState(&self, state: *const IBStream) -> HRESULT;
-	}
+	fn getState(&self, state: *const IBStream) -> HRESULT;
+}
 
 
-	#[uuid("58E595CC-DB2D-4969-8B6A-AF8C36A664E5")]
-	pub unsafe interface IHostApplication : IUnknown {
-		pub fn getName(&self, name: *mut u8) -> i32;
+#[interface("58E595CC-DB2D-4969-8B6A-AF8C36A664E5")]
+pub unsafe trait IHostApplication : IUnknown {
+	fn getName(&self, name: *mut u8) -> i32;
 
-		pub fn createInstance(&self, cid: *const com::IID, iid: *const com::IID, ppv: *mut *mut c_void) -> HRESULT;
-	}
+	fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
+}
 
-	#[uuid("7A4D811C-5211-4A1F-AED9-D2EE0B43BF9F")]
-	pub unsafe interface IPluginFactory : IUnknown {
-		pub fn getFactoryInfo(&self, factoryInfo: *mut PFactoryInfo) -> HRESULT;
+#[interface("7A4D811C-5211-4A1F-AED9-D2EE0B43BF9F")]
+pub unsafe trait IPluginFactory : IUnknown {
+	fn getFactoryInfo(&self, factoryInfo: *mut PFactoryInfo) -> HRESULT;
 
-		pub fn countClasses(&self) -> i32;
+	fn countClasses(&self) -> i32;
 
-		pub fn getClassInfo(&self, index: i32, classInfo: *mut PClassInfo) -> HRESULT;
+	fn getClassInfo(&self, index: i32, classInfo: *mut PClassInfo) -> HRESULT;
 
-		pub fn createInstance(&self, cidString: *const GUID, iidString: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
-	}
+	fn createInstance(&self, cidString: *const GUID, iidString: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
+}
 
-	#[uuid("0007B650-F24B-4C0B-A464-EDB9F00B2ABB")]
-	pub unsafe interface IPluginFactory2 : IPluginFactory {
-		pub fn getClassInfo2(&self, index: i32, classInfo: *mut PClassInfo2) -> HRESULT;
-	}
+#[interface("0007B650-F24B-4C0B-A464-EDB9F00B2ABB")]
+pub unsafe trait IPluginFactory2 : IPluginFactory {
+	fn getClassInfo2(&self, index: i32, classInfo: *mut PClassInfo2) -> HRESULT;
+}
 
-	#[uuid("4555A2AB-C123-4E57-9B12-291036878931")]
-	pub unsafe interface IPluginFactory3 : IPluginFactory2 {
-		pub fn getClassInfoUnicode(&self, index: i32, classInfo: *mut PClassInfoW) -> HRESULT;
+#[interface("4555A2AB-C123-4E57-9B12-291036878931")]
+pub unsafe trait IPluginFactory3 : IPluginFactory2 {
+	fn getClassInfoUnicode(&self, index: i32, classInfo: *mut PClassInfoW) -> HRESULT;
 
-		pub fn setHostContext(&self, context: *mut IUnknown) -> HRESULT;
-	}
+	fn setHostContext(&self, context: *mut IUnknown) -> HRESULT;
+}
 
-	#[uuid("C3BF6EA2-3099-4752-9B6B-F9901EE33E9B")]
-	pub unsafe interface IBStream: IUnknown {
+#[interface("C3BF6EA2-3099-4752-9B6B-F9901EE33E9B")]
+pub unsafe trait IBStream: IUnknown {
 
-		pub fn read(&self, buffer: *mut (), numBytes: i32, numBytesRead: *mut i32) -> HRESULT;
+	fn read(&self, buffer: *mut (), numBytes: i32, numBytesRead: *mut i32) -> HRESULT;
 
-		pub fn write(&self, buffer: *const (), numBytes: i32, numBytesWritten: *mut i32) -> HRESULT;
+	fn write(&self, buffer: *const (), numBytes: i32, numBytesWritten: *mut i32) -> HRESULT;
 
-		pub fn seek(&self, pos: i64, mode: i32, result: *mut i64) -> HRESULT;
+	fn seek(&self, pos: i64, mode: i32, result: *mut i64) -> HRESULT;
 
-		pub fn tell(&self, pos: *mut i64) -> HRESULT;
-	}
+	fn tell(&self, pos: *mut i64) -> HRESULT;
+}
 
-	#[uuid("42043F99-B7DA-453C-A569-E79D9AAEC33D")]
-	pub unsafe interface IAudioProcessor : IUnknown	{
-		pub fn setBusArrangements(&self, inputs: *const SpeakerArrangement, numIns: i32, outputs: *const SpeakerArrangement, numOuts: i32) -> HRESULT;
+#[interface("42043F99-B7DA-453C-A569-E79D9AAEC33D")]
+pub unsafe trait IAudioProcessor : IUnknown	{
+	fn setBusArrangements(&self, inputs: *const SpeakerArrangement, numIns: i32, outputs: *const SpeakerArrangement, numOuts: i32) -> HRESULT;
 
-		pub fn getBusArrangement (&self, dir: BusDirection, index: i32, arr: *mut SpeakerArrangement) -> HRESULT;
+	fn getBusArrangement (&self, dir: BusDirection, index: i32, arr: *mut SpeakerArrangement) -> HRESULT;
 
-		// TODO: Use enum for symbolicSampleSize
-		pub fn canProcessSampleSize(&self, symbolicSampleSize: i32) -> HRESULT;
+	// TODO: Use enum for symbolicSampleSize
+	fn canProcessSampleSize(&self, symbolicSampleSize: i32) -> HRESULT;
 
-		pub fn getLatencySamples(&self) -> u32;
+	fn getLatencySamples(&self) -> u32;
 
-		pub fn setupProcessing (&self, setup: *const ProcessSetup) -> HRESULT;
+	fn setupProcessing (&self, setup: *const ProcessSetup) -> HRESULT;
 
-		pub fn setProcessing(&self, state: bool) -> HRESULT;
+	fn setProcessing(&self, state: bool) -> HRESULT;
 
-		pub fn process (&self, data: *const ProcessData) -> HRESULT;
+	fn process (&self, data: *const ProcessData) -> HRESULT;
 
-		pub fn getTailSamples(&self) -> u32;
-	}
+	fn getTailSamples(&self) -> u32;
+}
 
-	#[uuid("A4779663-0BB6-4A56-B443-84A8466FEB9D")]
-	pub unsafe interface IParameterChanges : IUnknown {
-		pub fn getParameterCount(&self) -> i32;
+#[interface("A4779663-0BB6-4A56-B443-84A8466FEB9D")]
+pub unsafe trait IParameterChanges : IUnknown {
+	fn getParameterCount(&self) -> i32;
 
-		pub fn getParameterData(&self, index: i32) -> *mut IParamValueQueue;
+	fn getParameterData(&self, index: i32) -> *mut IParamValueQueue;
 
-		pub fn addParameterData(&self, id: *const ParamID, index: *mut i32) -> *mut IParamValueQueue;
-	}
+	fn addParameterData(&self, id: *const ParamID, index: *mut i32) -> *mut IParamValueQueue;
+}
 
-	#[uuid("01263A18-ED07-4F6F-98C9-D3564686F9BA")]
-	pub unsafe interface IParamValueQueue : IUnknown {
-		pub fn getParameterId(&self) -> ParamID;
+#[interface("01263A18-ED07-4F6F-98C9-D3564686F9BA")]
+pub unsafe trait IParamValueQueue : IUnknown {
+	fn getParameterId(&self) -> ParamID;
 
-		pub fn getPointCount(&self) -> i32;
+	fn getPointCount(&self) -> i32;
 
-		pub fn getPoint(&self, index: i32, sampleOffset: *mut i32, value: *mut ParamValue) -> HRESULT;
+	fn getPoint(&self, index: i32, sampleOffset: *mut i32, value: *mut ParamValue) -> HRESULT;
 
-		pub fn addPoint(&self, sampleOffset: i32, value: ParamValue, index: *mut i32) -> HRESULT;
-	}
-
-
-	#[uuid("3A2C4214-3463-49FE-B2C4-F397B9695A44")]
-	pub unsafe interface IEventList : IUnknown {
-		pub fn getEventCount(&self) -> i32;
-
-		pub fn getEvent(&self, index: i32, e: *mut Event) -> HRESULT;
-
-		pub fn addEvent(&self, e: *const Event) -> HRESULT;
-	}
+	fn addPoint(&self, sampleOffset: i32, value: ParamValue, index: *mut i32) -> HRESULT;
+}
 
 
+#[interface("3A2C4214-3463-49FE-B2C4-F397B9695A44")]
+pub unsafe trait IEventList : IUnknown {
+	fn getEventCount(&self) -> i32;
+
+	fn getEvent(&self, index: i32, e: *mut Event) -> HRESULT;
+
+	fn addEvent(&self, e: *const Event) -> HRESULT;
 }

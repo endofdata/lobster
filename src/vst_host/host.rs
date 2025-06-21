@@ -1,21 +1,37 @@
-use crate::asio_core::asio_device::ASIODeviceType;
 use sha256::digest;
 use std::collections::hash_map::HashMap;
 use super::{plugin_library::PluginLibrary, Error, IAudioProcessor, IComponent};
-use crate::asio_core::device_factory::DeviceFactory;
+use asiolib::device::Device;
+use windows::core::GUID;
 
-pub struct Host<'a> {
-	device: &'a mut dyn ASIODeviceType,
+pub struct BufferHandler {
+}
+
+impl BufferHandler {
+	pub fn new() -> BufferHandler {
+		BufferHandler {  }
+	}
+
+	pub fn process(&mut self, _buffers: &mut [Box<[f64]>], _input_count: usize, _output_count: usize) {
+		// TODO: handle audio buffers
+	}
+}
+
+pub struct Host {
+	device: Device,
+	buffer_handler: BufferHandler,
 	plugins: HashMap<String, PluginLibrary>
 }
 
-impl<'a> Host<'a> {
-	pub fn new(clsid: com::CLSID) -> Result<Host<'a>, Error> {
-		DeviceFactory::create_device(clsid, Host::process_buffers)
+impl<'a> Host {
+	pub fn new(clsid: &GUID) -> Result<Host, Error> {
+		let mut handler = BufferHandler::new();
+		Device::new(clsid, |buffers, in_count, out_count| handler.process(buffers, in_count, out_count))
 			.or_else(|e| Err(e.into()))
 			.and_then(|device|
 				Ok(Host {
 					device,
+					buffer_handler: handler,
 					plugins: HashMap::<String, PluginLibrary>::new()
 				}))
 	}
@@ -96,10 +112,9 @@ impl<'a> Host<'a> {
 				// asio_core::device_factory::DeviceFactory::drop_device();
 }
 
-impl<'a> Drop for Host<'a> {
+impl Drop for Host {
 	fn drop(&mut self) {
 		println!("Dropping host");
 		self.remove_all_plugins().unwrap();
-		DeviceFactory::drop_device();
 	}
 }

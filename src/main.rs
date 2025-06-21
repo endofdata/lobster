@@ -1,23 +1,21 @@
-mod asio_core;
 mod vst_host;
 
 use crate::vst_host::host::Host;
+use windows::core::GUID;
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
 fn main() {
 	let hr = unsafe {
-		com::sys::CoInitializeEx(
-			core::ptr::null_mut::<core::ffi::c_void>(),
-			com::sys::COINIT_APARTMENTTHREADED,
-		)
+		CoInitializeEx(None, COINIT_APARTMENTTHREADED)
 	};
 
-	if com::sys::FAILED(hr) {
-		panic!("COM initialization failed with error code {:X}", hr);
+	if hr.is_err() {
+		panic!("COM initialization failed with error code {:X}", hr.0);
 	}
 
 
 	// Yamaha Steinberg USB ASIO
-	let clsid = com::CLSID {
+	let clsid = GUID {
 		data1: 0xCB7F9FFD,
 		data2: 0xA33B,
 		data3: 0x48B2,
@@ -26,7 +24,7 @@ fn main() {
 
 	// println!("FIDString: {}", vst_host::as_fid_string(&clsid));
 
-	let mut host = Host::new(clsid).expect("Failed to create host.");
+	let mut host = Host::new(&clsid).expect("Failed to create host.");
 
 	let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 
@@ -47,7 +45,7 @@ fn main() {
 	drop(host);
 
 	unsafe {
-		com::sys::CoUninitialize();
+		CoUninitialize();
 	}
 }
 
