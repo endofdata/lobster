@@ -19,7 +19,7 @@ impl PluginLibrary {
 
 	pub fn new(vst: Library) -> PluginLibrary {
 		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = vst.get(b"InitDll");
+			let opt_method : Result<libloading::Symbol<unsafe extern "C" fn()>, libloading::Error> = vst.get(b"InitDll");
 			match opt_method {
 				Ok(init_dll) => init_dll(),
 				// method is optional
@@ -31,7 +31,7 @@ impl PluginLibrary {
 
 	pub fn close(self) -> Result<(), Error> {
 		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn()>, libloading::Error> = self.vst.get(b"ExitDll");
+			let opt_method : Result<libloading::Symbol<unsafe extern "C" fn()>, libloading::Error> = self.vst.get(b"ExitDll");
 			match opt_method {
 				Ok(exit_dll) => exit_dll(),
 				// method is optional
@@ -46,7 +46,7 @@ impl PluginLibrary {
 
 	fn get_factory(&self)  -> Result<PluginFactory, Error> {
 		unsafe {
-			let opt_method : Result<libloading::Symbol<unsafe extern fn() -> Option<IPluginFactory>>, libloading::Error> = self.vst.get(b"GetPluginFactory");
+			let opt_method : Result<libloading::Symbol<unsafe extern "C" fn() -> Option<IPluginFactory>>, libloading::Error> = self.vst.get(b"GetPluginFactory");
 			match opt_method {
 				Ok(get_factory) => match get_factory() {
 					Some(factory) => {
