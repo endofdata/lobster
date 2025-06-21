@@ -1,7 +1,6 @@
 mod asio_core;
 mod vst_host;
 
-use crate::asio_core::device_factory::DeviceFactory;
 use crate::vst_host::host::Host;
 
 fn main() {

@@ -11,6 +11,7 @@ static mut THE_DEVICE : MaybeUninit<DeviceSingleton> = MaybeUninit::uninit();
 
 impl DeviceSingleton {
 
+	#[allow(static_mut_refs)]
 	/// Constructs a singleton that provides sync'ed access to the box'ed value
 	pub fn new(value: Box<dyn ASIODeviceType>) -> &'static DeviceSingleton {
 		static ONCE : Once = Once::new();
@@ -27,6 +28,7 @@ impl DeviceSingleton {
 		}
 	}
 
+	#[allow(static_mut_refs)]
 	/// Gets a mutable reference for the singleton's (unboxed) value
 	pub fn get_device<'a>() -> &'a mut dyn ASIODeviceType {
 		let singleton;
@@ -39,10 +41,11 @@ impl DeviceSingleton {
 		mutref
 	}
 
+	#[allow(static_mut_refs)]
 	pub fn drop() {
 		unsafe {
 			THE_DEVICE.assume_init_drop();
-		}	
+		}
 	}
 
 	pub fn init_callbacks() -> Callbacks {
