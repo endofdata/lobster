@@ -23,10 +23,10 @@ fn main() {
 		data3: 0x48B2,
 		data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
 	};
-	
+
 	// println!("FIDString: {}", vst_host::as_fid_string(&clsid));
 
-	let mut host = Host::new(clsid);
+	let mut host = Host::new(clsid).expect("Failed to create host.");
 
 	let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 

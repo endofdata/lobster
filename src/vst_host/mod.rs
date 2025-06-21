@@ -27,6 +27,8 @@ use com::sys::{GUID, HRESULT};
 use com::{interfaces::IUnknown, IID};
 use pclass_info::{PClassInfo, PClassInfo2, PClassInfoW};
 
+use crate::asio_core::ASIOError;
+
 use self::bus_direction::BusDirection;
 use self::bus_info::BusInfo;
 use self::io_mode::IoMode;
@@ -113,11 +115,12 @@ pub fn as_fid_string(guid: &com::sys::GUID) -> String {
 	guid.to_string()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub enum ErrorSource {
 	Other,
 	System(HRESULT),
+	ASIO(ASIOError)
 }
 
 #[derive(Debug)]
@@ -137,10 +140,33 @@ impl Error {
 		Error::from_source(description, ErrorSource::System(hresult))
 	}
 
+	pub fn from_asio(description: &str, asio: ASIOError) -> Error {
+		Error::from_source(description, ErrorSource::ASIO(asio))
+	}
+
 	pub fn from_source(description: &str, source: ErrorSource) -> Error {
 		Error {
-			description: String::from(description),
+			description: description.into(),
 			source,
+		}
+	}
+}
+
+impl From<crate::asio_core::ErrorSource> for ErrorSource {
+	fn from(value: crate::asio_core::ErrorSource) -> Self {
+		match value {
+			crate::asio_core::ErrorSource::ASIO(asio) => ErrorSource::ASIO(asio),
+			crate::asio_core::ErrorSource::System(hr) => ErrorSource::System(hr),
+			crate::asio_core::ErrorSource::Other => ErrorSource::Other
+		}
+	}
+}
+
+impl From<crate::asio_core::Error> for Error {
+	fn from(value: crate::asio_core::Error) -> Self {
+		Error {
+			description: format!("{:?}", value),
+			source: (*value.get_source()).into()
 		}
 	}
 }

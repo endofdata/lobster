@@ -10,15 +10,14 @@ pub struct Host<'a> {
 }
 
 impl<'a> Host<'a> {
-	pub fn new(clsid: com::CLSID) -> Host<'a> {
-		let device = match DeviceFactory::create_device(clsid, Host::process_buffers) {
-			Err(error) => panic!("Failed to create ASIO device: {:?}", error),
-			Ok(dev) => dev
-		};
-		Host {
-			device,
-			plugins: HashMap::<String, PluginLibrary>::new()
-		}
+	pub fn new(clsid: com::CLSID) -> Result<Host<'a>, Error> {
+		DeviceFactory::create_device(clsid, Host::process_buffers)
+			.or_else(|e| Err(e.into()))
+			.and_then(|device|
+				Ok(Host {
+					device,
+					plugins: HashMap::<String, PluginLibrary>::new()
+				}))
 	}
 
 	pub fn add_plugin(&mut self, path: &str) -> Result<String, Error> {

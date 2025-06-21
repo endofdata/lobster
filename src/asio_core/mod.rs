@@ -447,7 +447,8 @@ impl fmt::Debug for Time {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum ErrorSource {
 	Other,
 	System(HRESULT),
@@ -462,6 +463,10 @@ pub struct Error {
 }
 
 impl Error {
+	pub fn get_source(&self) -> &ErrorSource {
+		&self.source
+	}
+
 	pub fn from_other(description: &str) -> Error {
 		Error::from_source(description, ErrorSource::Other)
 	}
