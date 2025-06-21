@@ -491,7 +491,7 @@ impl Error {
 #[derive(Copy, Clone)]
 pub struct Callbacks
 {
-	pub buffer_switch: extern fn(double_buffer_index: i32, direct_process: ASIOBool),
+	pub buffer_switch: extern "C" fn(double_buffer_index: i32, direct_process: ASIOBool),
 		// bufferSwitch indicates that both input and output are to be processed.
 		// the current buffer half index (0 for A, 1 for B) determines
 		// - the output buffer that the host should start to fill. the other buffer
@@ -508,16 +508,16 @@ pub struct Callbacks
 		// directProcess should be set to ASIOFalse.
 		// Note: bufferSwitch may be called at interrupt time for highest efficiency.
 
-	pub sample_rate_did_change: extern fn(sample_rate: f64),
+	pub sample_rate_did_change: extern "C" fn(sample_rate: f64),
 		// gets called when the AudioStreamIO detects a sample rate change
 		// If sample rate is unknown, 0 is passed (for instance, clock loss
 		// when externally synchronized).
 
-	pub asio_message: extern fn(selector: MessageSelector, value: i32, message: *mut (), opt: *const f64) -> i32,
+	pub asio_message: extern "C" fn(selector: MessageSelector, value: i32, message: *mut (), opt: *const f64) -> i32,
 		// generic callback for various purposes, see selectors below.
 		// note this is only present if the asio version is 2 or higher
 
-	pub buffer_switch_time_info: extern fn(params: *const Time, double_buffer_index: i32, direct_process: ASIOBool) -> *const Time
+	pub buffer_switch_time_info: extern "C" fn(params: *const Time, double_buffer_index: i32, direct_process: ASIOBool) -> *const Time
 		// new callback with time info. makes ASIOGetSamplePosition() and various
 		// calls to ASIOGetSampleRate obsolete,
 		// and allows for timecode sync etc. to be preferred; will be used if
