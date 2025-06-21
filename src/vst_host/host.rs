@@ -1,7 +1,7 @@
 use crate::asio_core::asio_device::ASIODeviceType;
 use sha256::digest;
 use std::collections::hash_map::HashMap;
-use super::{plugin_library::PluginLibrary, Error, IAudioProcessor};
+use super::{plugin_library::PluginLibrary, Error, IAudioProcessor, IComponent};
 use crate::asio_core::device_factory::DeviceFactory;
 
 pub struct Host<'a> {
@@ -36,6 +36,13 @@ impl<'a> Host<'a> {
 
 	pub fn get_audio_processor(&self, id: &str) -> Result<IAudioProcessor, Error> {
 		match self.plugins.get(id).and_then(|vst| Some(vst.get_audio_processor())) {
+			Some(r) => r,
+			None => Err(Error::from_other("Invalid VST id"))
+		}
+	}
+
+	pub fn get_component(&self, id: &str) -> Result<IComponent, Error> {
+		match self.plugins.get(id).and_then(|vst| Some(vst.get_component())) {
 			Some(r) => r,
 			None => Err(Error::from_other("Invalid VST id"))
 		}

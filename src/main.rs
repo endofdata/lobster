@@ -39,6 +39,8 @@ fn main() {
 	// TODO: use vst for audio processing / creation
 	let vst = host.get_audio_processor(&vst_id).expect("Failed to create audio processor.");
 
+	let _test = host.get_component(&vst_id).expect("Failed to create audio component.");
+
 	println!("Shutting down");
 
 	// drop VSTs and host before uninitializing COM

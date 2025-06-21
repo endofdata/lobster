@@ -1,5 +1,5 @@
 use libloading::Library;
-use super::{IPluginFactory, IAudioProcessor};
+use super::{IPluginFactory, IAudioProcessor, IComponent};
 use super::Error;
 use super::plugin_factory::PluginFactory;
 
@@ -12,7 +12,7 @@ impl PluginLibrary {
 		unsafe {
 			match libloading::Library::new(library_path) {
 				Ok(vst) => Ok(PluginLibrary::new(vst)),
-				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", library_path, error))) 
+				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", library_path, error)))
 			}
 		}
 	}
@@ -47,7 +47,7 @@ impl PluginLibrary {
 	fn get_factory(&self)  -> Result<PluginFactory, Error> {
 		unsafe {
 			let opt_method : Result<libloading::Symbol<unsafe extern fn() -> Option<IPluginFactory>>, libloading::Error> = self.vst.get(b"GetPluginFactory");
-			match opt_method {			
+			match opt_method {
 				Ok(get_factory) => match get_factory() {
 					Some(factory) => {
 						let _ = factory.countClasses();
@@ -60,10 +60,17 @@ impl PluginLibrary {
 		}
 	}
 
+	pub fn get_component(&self) -> Result<IComponent, Error> {
+		match self.get_factory() {
+			Ok(factory) => factory.create_component_controller(),
+			Err(error) => Err(error)
+		}
+	}
+
 	pub fn get_audio_processor(&self) -> Result<IAudioProcessor, Error> {
 		match self.get_factory() {
 			Ok(factory) => factory.create_audio_processor(),
-			Err(error) => Err(error)	
+			Err(error) => Err(error)
 		}
 	}
 }
