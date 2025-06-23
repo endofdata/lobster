@@ -30,7 +30,7 @@ impl PluginFactory {
 		}
 
 		let factory_2 =factory.cast::<IPluginFactory2>().ok();
-		let factory_3: Option<IPluginFactory3> = None;
+		let factory_3 = factory.cast::<IPluginFactory3>().ok();
 
 		Ok(PluginFactory {
 			factory,
