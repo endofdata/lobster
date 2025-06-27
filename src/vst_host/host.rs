@@ -1,6 +1,9 @@
 use sha256::digest;
 use std::collections::hash_map::HashMap;
-use super::{plugin_library::PluginLibrary, Error, IAudioProcessor, IComponent};
+
+use crate::vst_host::{plugin::Plugin, plugin_library::ClassInfoIter};
+
+use super::{plugin_library::PluginLibrary, Error};
 use asiolib::device::Device;
 use windows::core::GUID;
 
@@ -23,7 +26,7 @@ pub struct Host {
 	plugins: HashMap<String, PluginLibrary>
 }
 
-impl<'a> Host {
+impl Host {
 	pub fn new(clsid: &GUID) -> Result<Host, Error> {
 		let mut handler = BufferHandler::new();
 		Device::new(clsid, |buffers, in_count, out_count| handler.process(buffers, in_count, out_count))
@@ -36,7 +39,7 @@ impl<'a> Host {
 				}))
 	}
 
-	pub fn add_plugin(&mut self, path: &str) -> Result<String, Error> {
+	pub fn add_plugin_library(&mut self, path: &str) -> Result<String, Error> {
 		let id = digest(path);
 		// TODO: check whether plugin already loaded
 		match PluginLibrary::load(path) {
@@ -49,16 +52,22 @@ impl<'a> Host {
 		}
 	}
 
-	pub fn get_audio_processor(&self, id: &str) -> Result<IAudioProcessor, Error> {
+	// pub fn get_audio_processor(&self, id: &str) -> Result<IAudioProcessor, Error> {
+	// 	self.plugins.get(id)
+	// 		.ok_or_else(|| Error::from_other("Invalid VST id"))
+	// 		.and_then(|vst| vst.get_audio_processor())
+	// }
+
+	pub fn get_class_infos(&self, id: &str) -> Result<ClassInfoIter<'_>, Error> {
 		self.plugins.get(id)
 			.ok_or_else(|| Error::from_other("Invalid VST id"))
-			.and_then(|vst| vst.get_audio_processor())
+			.and_then(|vst| Ok(vst.get_class_infos()))
 	}
 
-	pub fn get_component(&self, id: &str) -> Result<IComponent, Error> {
+	pub fn get_plugin(&self, id: &str) -> Result<Plugin, Error> {
 		self.plugins.get(id)
 			.ok_or_else(|| Error::from_other("Invalid VST id"))
-			.and_then(|vst| vst.get_component())
+			.and_then(|vst| vst.create_plugin(std::ptr::null()))
 	}
 
 	fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {
@@ -87,12 +96,11 @@ impl<'a> Host {
 	}
 
 	pub fn remove_all_plugins(&mut self) -> Result<(), Error> {
-		let keys: Vec<String> = self.plugins.keys().map(|k| k.clone()).collect();
-		for key in keys {
-			if let Some(lib) = self.plugins.remove(&key) {
-				lib.close()?;
-			}
-		}
+		// let keys: Vec<String> = self.plugins.keys().map(|k| k.clone()).collect();
+		// for key in keys {
+		// 	if let Some(lib) = self.plugins.remove(&key) {
+		// 	}
+		// }
 		self.plugins.clear();
 		Ok(())
 	}

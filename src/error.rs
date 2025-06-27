@@ -62,3 +62,12 @@ impl From<crate::vst_host::Error> for Error {
 		}
 	}
 }
+
+impl From<windows::core::Error> for Error {
+	fn from(value: windows::core::Error) -> Self {
+		Error {
+			description: "Windows raised an error".into(),
+			source: Some(NestedError::System(value.code()))
+		}
+	}
+}
