@@ -31,37 +31,38 @@ fn main() -> Result<(), Error> {
 
 		let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 
-		let vst_id = host.add_plugin_library(library_path)?;
+		let vst = host.add_plugin_library(library_path)?;
 
 		// TODO: use vst for audio processing / creation
 		//let vst = host.get_audio_processor(&vst_id)?;
 		//let _test = host.get_component(&vst_id)?;
 
-		if let Ok(cls_infos) = host.get_class_infos(&vst_id) {
-			for info in cls_infos {
-				println!("{} {} {}: {} - {} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
-			}
+		println!("Created VST:\n  Vendor: {}\n  URL: {}\n  EMail: {}\n  Flags: {:?}\n  Class Infos:",
+			vst.get_vendor(), vst.get_url(), vst.get_email(), vst.get_flags());
+
+		for info in vst.get_class_infos() {
+			println!("    {} {} {}: {} - {} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
 		}
 
-		if let Ok(plugin) = host.get_plugin(&vst_id) {
-			println!("Created plugin.");
+		if let Ok(plugin) = vst.create_plugin(std::ptr::null()) {
+			println!("Created plugin");
 
 			let edit_controller : IEditController = plugin.get_edit_controller()
 				.or_else(|e| Err(Error::from_hresult("failed to get edit controller", e.code())))?;
 
 			let parameter_count = unsafe { edit_controller.getParameterCount() };
 
-			println!("Plugin has {} parameter(s).", parameter_count);
+			println!("  Plugin has {} parameter(s).", parameter_count);
 
 			let audio_processor = plugin.create_audio_processor()
 				.or_else(|e| Err(Error::from_hresult("failed to create audio processor", e.code())))?;
 
 			let sample_size = std::mem::size_of::<f32>() as i32;
 			if unsafe { audio_processor.canProcessSampleSize(sample_size).is_err() } {
-				println!("Plugin cannot process samples of size {} byte(s).", sample_size);
+				println!("  Plugin cannot process samples of size {} byte(s).", sample_size);
 			}
 			else {
-				println!("Plugin can process samples of size {} byte(s).", sample_size);
+				println!("  Plugin can process samples of size {} byte(s).", sample_size);
 			}
 		}
 

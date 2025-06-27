@@ -1,6 +1,6 @@
 use std::ops::BitAnd;
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FactoryFlags {
 	NoFlags = 0,
 	ClassesDiscardable = 1,

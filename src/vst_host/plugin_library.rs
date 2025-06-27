@@ -1,5 +1,5 @@
 use libloading::Library;
-use windows_core::{IUnknown, Interface, GUID};
+use windows::core::{IUnknown, Interface, GUID};
 use crate::vst_host::factory_flags::FactoryFlags;
 use crate::vst_host::pclass_info::{ClassInfo, PClassInfo, PClassInfo2, PClassInfoW};
 use crate::vst_host::pfactory_info::PFactoryInfo;
@@ -41,6 +41,7 @@ impl<'a> Iterator for ClassInfoIter<'a> {
 }
 
 pub struct PluginLibrary {
+	id: String,
 	vst: Option<Library>,
 	factory: Option<IPluginFactory>,
 	factory_2: Option<IPluginFactory2>,
@@ -52,16 +53,16 @@ pub struct PluginLibrary {
 }
 
 impl PluginLibrary {
-	pub fn load(library_path: &str) -> Result<PluginLibrary, Error> {
+	pub fn load(path: &str) -> Result<PluginLibrary, Error> {
 		unsafe {
-			match libloading::Library::new(library_path) {
-				Ok(vst) => PluginLibrary::new(vst),
-				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", library_path, error)))
+			match libloading::Library::new(path) {
+				Ok(vst) => PluginLibrary::new(&sha256::digest(path), vst),
+				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", path, error)))
 			}
 		}
 	}
 
-	pub fn new(vst: Library) -> Result<PluginLibrary, Error> {
+	pub fn new(id: &str, vst: Library) -> Result<PluginLibrary, Error> {
 		unsafe {
 			if let Ok(init_dll) = vst.get::<unsafe extern "C" fn()>(b"InitDll") {
 				init_dll();
@@ -78,6 +79,7 @@ impl PluginLibrary {
 						let factory_3 = factory.cast::<IPluginFactory3>().ok();
 
 						Ok(PluginLibrary {
+							id: id.to_string(),
 							vst: Some(vst),
 							factory: Some(factory),
 							factory_2,
@@ -95,8 +97,8 @@ impl PluginLibrary {
 		}
 	}
 
-	pub fn get_class_infos<'a>(&'a self) -> ClassInfoIter<'a> {
-		ClassInfoIter::new(self)
+	pub fn get_id(&self) -> &str {
+		&self.id
 	}
 
 	pub fn get_vendor(&self) -> &str {
@@ -113,6 +115,10 @@ impl PluginLibrary {
 
 	pub fn get_flags(&self) -> FactoryFlags {
 		self.flags
+	}
+
+	pub fn get_class_infos<'a>(&'a self) -> ClassInfoIter<'a> {
+		ClassInfoIter::new(self)
 	}
 
 	pub fn create_plugin(&self, context: *const IUnknown) -> Result<Plugin, Error> {

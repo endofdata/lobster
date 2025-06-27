@@ -1,8 +1,3 @@
-use sha256::digest;
-use std::collections::hash_map::HashMap;
-
-use crate::vst_host::{plugin::Plugin, plugin_library::ClassInfoIter};
-
 use super::{plugin_library::PluginLibrary, Error};
 use asiolib::device::Device;
 use windows::core::GUID;
@@ -23,7 +18,7 @@ impl BufferHandler {
 pub struct Host {
 	device: Device,
 	buffer_handler: BufferHandler,
-	plugins: HashMap<String, PluginLibrary>
+	plugins: Vec<PluginLibrary>
 }
 
 impl Host {
@@ -35,39 +30,44 @@ impl Host {
 				Ok(Host {
 					device,
 					buffer_handler: handler,
-					plugins: HashMap::<String, PluginLibrary>::new()
+					plugins: Vec::<PluginLibrary>::new()
 				}))
 	}
 
-	pub fn add_plugin_library(&mut self, path: &str) -> Result<String, Error> {
-		let id = digest(path);
+	pub fn add_plugin_library(&mut self, path: &str) -> Result<&PluginLibrary, Error> {
 		// TODO: check whether plugin already loaded
 		match PluginLibrary::load(path) {
 			Ok(lib) => {
-				let result = id.clone();
-				self.plugins.insert(id, lib);
-				Ok(result)
+				let id = lib.get_id().to_string();
+				self.plugins.push(lib);
+				self.get_plugin_library(&id)
 			},
 			Err(err) => Err(err)
 		}
 	}
 
-	// pub fn get_audio_processor(&self, id: &str) -> Result<IAudioProcessor, Error> {
-	// 	self.plugins.get(id)
-	// 		.ok_or_else(|| Error::from_other("Invalid VST id"))
-	// 		.and_then(|vst| vst.get_audio_processor())
-	// }
-
-	pub fn get_class_infos(&self, id: &str) -> Result<ClassInfoIter<'_>, Error> {
-		self.plugins.get(id)
+	pub fn get_plugin_library(&self, id: &str) -> Result<&PluginLibrary, Error> {
+		self.plugins.iter().find(|p| p.get_id() == id)
 			.ok_or_else(|| Error::from_other("Invalid VST id"))
-			.and_then(|vst| Ok(vst.get_class_infos()))
 	}
 
-	pub fn get_plugin(&self, id: &str) -> Result<Plugin, Error> {
-		self.plugins.get(id)
-			.ok_or_else(|| Error::from_other("Invalid VST id"))
-			.and_then(|vst| vst.create_plugin(std::ptr::null()))
+	pub fn remove_plugin_library(&mut self, id: &str) -> bool {
+		let mut found_match = false;
+		// retain all whose id does not match requested id
+		self.plugins.retain(|lib| {
+			if lib.get_id() == id {
+				found_match = true;
+				false
+			}
+			else {
+				true
+			}
+		});
+		found_match
+	}
+
+	pub fn remove_all_plugin_libraries(&mut self) {
+		self.plugins.clear();
 	}
 
 	fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {
@@ -86,43 +86,11 @@ impl Host {
 			}
 		}
 	}
-
-	pub fn remove_plugin(&mut self, id: &str) -> bool {
-		if let Some(lib) = self.plugins.remove(id) {
-			drop(lib);
-			return true;
-		}
-		false
-	}
-
-	pub fn remove_all_plugins(&mut self) -> Result<(), Error> {
-		// let keys: Vec<String> = self.plugins.keys().map(|k| k.clone()).collect();
-		// for key in keys {
-		// 	if let Some(lib) = self.plugins.remove(&key) {
-		// 	}
-		// }
-		self.plugins.clear();
-		Ok(())
-	}
-
-					// device.set_sample_rate(48000.0f64);
-
-				// println!("ASIO device starting");
-				// device.start();
-				// println!("ASIO Device started");
-
-				// thread::sleep(Duration::from_secs(2));
-
-				// println!("ASIO device stopping");
-				// device.stop();
-				// println!("ASIO device stopped");
-
-				// asio_core::device_factory::DeviceFactory::drop_device();
 }
 
 impl Drop for Host {
 	fn drop(&mut self) {
 		println!("Dropping host");
-		self.remove_all_plugins().unwrap();
+		self.remove_all_plugin_libraries();
 	}
 }
