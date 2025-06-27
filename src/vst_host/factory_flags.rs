@@ -15,7 +15,7 @@ impl FactoryFlags {
 	}
 }
 
-/// How to make a [Flags] enum
+/// How to make a \[Flags\] enum
 impl BitAnd for FactoryFlags {
 	type Output = FactoryFlags;
 

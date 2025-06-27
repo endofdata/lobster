@@ -149,7 +149,7 @@ pub type wchar_t = u32;
 pub const VST_AUDIO_EFFECT_CLASS : &'static str = "Audio Module Class";
 
 //------------------------------------------------------------------------
-/** Flags used for IComponentHandler::restartComponent */
+/// Flags used for IComponentHandler::restartComponent
 pub enum RestartFlags
 {
 	/// The Component should be reloaded
@@ -242,7 +242,7 @@ pub enum ParameterFlags
 
 	/// parameter is a program change (unitId gives info about associated unit
 	kIsProgramChange = 1 << 15,
-	/// - see ef vst3ProgramLists)
+	/// - see *vst3ProgramLists*
 
 	/// special bypass parameter (only one allowed): plug-in can handle bypass
 	/// (highly recommended to export a bypass parameter for effect plug-in)
@@ -250,6 +250,10 @@ pub enum ParameterFlags
 
 }
 
+/// Controller Parameter Info.
+///
+/// A parameter info describes a parameter of the controller. The id must always be the same
+/// for a parameter as this uniquely identifies the parameter.
 pub struct ParameterInfo
 {
 	/// unique identifier of this parameter (named tag too)
@@ -262,17 +266,26 @@ pub struct ParameterInfo
 	units: String128,
 	/// number of discrete steps (0: continuous, 1: toggle, discrete value otherwise
 	stepCount: i32,
-	/// (corresponding to max - min, for example: 127 for a min = 0 and a max = 127) - see ef vst3ParameterIntro)
+	/// (corresponding to max - min, for example: 127 for a min = 0 and a max = 127 - see _vst3ParameterIntro_)
 
-	/// default normalized value [0,1] (in case of discrete value: defaultNormalizedValue = defDiscreteValue / stepCount)
+	/// default normalized value \[0,1\] (in case of discrete value: defaultNormalizedValue = defDiscreteValue / stepCount)
 	defaultNormalizedValue: ParamValue,
-	/// id of unit this parameter belongs to (see ef vst3Units)
+	/// id of unit this parameter belongs to (see *vst3Units*)
 	unitId: UnitID,
 	/// ParameterFlags (see below)
 	flags: i32,
 }
 
-
+/// Basic interface to a plug-in component: IPluginBase
+///
+/// - \[plug imp\]
+/// - initialize/terminate the plug-in component
+///
+/// The host uses this interface to initialize and to terminate the plug-in component.
+/// The context that is passed to the initialize method contains any interface to the
+/// host that the plug-in will need to work. These interfaces can vary from category to
+/// category. A list of supported host context interfaces should be included in the
+/// documentation of a specific category.
 #[interface("22888DDB-156E-45AE-8358-B34808190625")]
 pub unsafe trait IPluginBase : IUnknown {
 	pub fn initialize(&self, context: *const IUnknown) -> HRESULT;
@@ -280,6 +293,18 @@ pub unsafe trait IPluginBase : IUnknown {
 	pub fn terminate(&self, ) -> HRESULT;
 }
 
+/// Component base interface: Vst::IComponent
+///
+/// - \[plug imp\]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// This is the basic interface for a VST component and must always be supported.
+/// It contains the common parts of any kind of processing class. The parts that
+/// are specific to a media type are defined in a separate interface. An implementation
+/// component must provide both the specific interface and IComponent.
+///
+/// see [IPluginBase]
 #[interface("E831FF31-F2D5-4301-928E-BBEE25697802")]
 pub unsafe trait IComponent : IPluginBase {
 	pub fn getControllerClassId(&self, classId: *mut GUID) -> HRESULT;
@@ -301,7 +326,14 @@ pub unsafe trait IComponent : IPluginBase {
 	pub fn getState(&self, state: *const IBStream) -> HRESULT;
 }
 
-
+/// Basic host callback interface: Vst::IHostApplication
+///
+/// - \[host imp\]
+/// - \[passed as 'context' in to IPluginBase::initialize () \]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// Basic VST host application interface.
 #[interface("58E595CC-DB2D-4969-8B6A-AF8C36A664E5")]
 pub unsafe trait IHostApplication : IUnknown {
 	pub fn getName(&self, name: *mut u8) -> i32;
@@ -309,6 +341,18 @@ pub unsafe trait IHostApplication : IUnknown {
 	pub fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
 }
 
+/// Class factory that any plug-in defines for creating class instances: IPluginFactory
+///
+/// - \[plug imp\]
+///
+/// From the host's point of view a plug-in module is a factory which can create
+/// a certain kind of object(s). The interface IPluginFactory provides methods
+/// to get information about the classes exported by the plug-in and a
+/// mechanism to create instances of these classes (that usually define the IPluginBase interface).
+///
+/// **An implementation is provided in public.sdk/source/common/pluginfactory.cpp**
+///
+/// see *GetPluginFactory*
 #[interface("7A4D811C-5211-4A1F-AED9-D2EE0B43BF9F")]
 pub unsafe trait IPluginFactory : IUnknown {
 	pub fn getFactoryInfo(&self, factoryInfo: *mut PFactoryInfo) -> HRESULT;
@@ -320,11 +364,13 @@ pub unsafe trait IPluginFactory : IUnknown {
 	pub fn createInstance(&self, cidString: *const GUID, iidString: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
 }
 
+/// Version 2 of class factory supporting PClassInfo2: IPluginFactory2
 #[interface("0007B650-F24B-4C0B-A464-EDB9F00B2ABB")]
 pub unsafe trait IPluginFactory2 : IPluginFactory {
 	pub fn getClassInfo2(&self, index: i32, classInfo: *mut PClassInfo2) -> HRESULT;
 }
 
+/// Version 3 of class factory supporting PClassInfoW: IPluginFactory3
 #[interface("4555A2AB-C123-4E57-9B12-291036878931")]
 pub unsafe trait IPluginFactory3 : IPluginFactory2 {
 	pub fn getClassInfoUnicode(&self, index: i32, classInfo: *mut PClassInfoW) -> HRESULT;
@@ -332,6 +378,9 @@ pub unsafe trait IPluginFactory3 : IPluginFactory2 {
 	pub fn setHostContext(&self, context: *mut IUnknown) -> HRESULT;
 }
 
+/// Wrapper class for typed reading/writing from or to IBStream.
+///
+/// Can be used framework-independent in plug-ins.
 #[interface("C3BF6EA2-3099-4752-9B6B-F9901EE33E9B")]
 pub unsafe trait IBStream: IUnknown {
 
@@ -344,58 +393,215 @@ pub unsafe trait IBStream: IUnknown {
 	pub fn tell(&self, pos: *mut i64) -> HRESULT;
 }
 
+/// Audio processing interface: Vst::IAudioProcessor
+///
+/// - \[plug imp\]
+/// - \[extends IComponent\]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// This interface must always be supported by audio processing plug-ins.
 #[interface("42043F99-B7DA-453C-A569-E79D9AAEC33D")]
-pub unsafe trait IAudioProcessor : IUnknown	{
+ pub unsafe trait IAudioProcessor : IUnknown	{
+	/// Try to set (host => plug-in) a wanted arrangement for inputs and outputs.
+	///
+	/// The host should always deliver the same number of input and output busses than the plug-in
+	/// needs (see \ref IComponent::getBusCount). The plug-in has 3 possibilities to react on this
+	/// setBusArrangements call:
+	///
+	/// 1. The plug-in accepts these arrangements, then it should modify, if needed, its busses to match
+	/// these new arrangements (later on asked by the host with IComponent::getBusInfo () or
+	/// IAudioProcessor::getBusArrangement ()) and then should return kResultTrue.
+	///
+	/// 2. The plug-in does not accept or support these requested arrangements for all
+	/// inputs/outputs or just for some or only one bus, but the plug-in can try to adapt its current
+	/// arrangements according to the requested ones (requested arrangements for kMain busses should be
+	/// handled with more priority than the ones for kAux busses), then it should modify its busses arrangements
+	/// and should return kResultFalse.
+	///
+	/// 3. Same than the point 2 above the plug-in does not support these requested arrangements
+	/// but the plug-in cannot find corresponding arrangements, the plug-in could keep its current arrangement
+	/// or fall back to a default arrangement by modifying its busses arrangements and should return kResultFalse.
+	///
+	/// Parameters:
+	/// - inputs: pointer to an array of /ref SpeakerArrangement
+	/// - numIns: number of /ref SpeakerArrangement in inputs array
+	/// - outputs: pointer to an array of /ref SpeakerArrangement
+	/// - numOuts: number of /ref SpeakerArrangement in outputs array
+	///
+	/// Returns: kResultTrue when Arrangements is supported and is the current one, else returns kResultFalse.
 	pub fn setBusArrangements(&self, inputs: *const SpeakerArrangement, numIns: i32, outputs: *const SpeakerArrangement, numOuts: i32) -> HRESULT;
 
+	/// Gets the bus arrangement for a given direction (input/output) and index.
+	///
+	/// Note: IComponent::getBusInfo () and IAudioProcessor::getBusArrangement () should be always return the same
+	/// information about the busses arrangements.
 	pub fn getBusArrangement (&self, dir: BusDirection, index: i32, arr: *mut SpeakerArrangement) -> HRESULT;
 
+	/// Asks if a given sample size is supported see \ref SymbolicSampleSizes.
 	// TODO: Use enum for symbolicSampleSize
 	pub fn canProcessSampleSize(&self, symbolicSampleSize: i32) -> HRESULT;
 
+	/// Gets the current Latency in samples.
+	///
+	/// The returned value defines the group delay or the latency of the plug-in. For example,
+	/// if the plug-in internally needs to look in advance (like compressors) 512 samples then
+	/// this plug-in should report 512 as latency. If during the use of the plug-in this latency
+	/// change, the plug-in has to inform the host by using
+	/// [IComponentHandler::restartComponent(kLatencyChanged)], this could lead to audio playback
+	/// interruption because the host has to recompute its internal mixer delay compensation.
+	///
+	/// Note that for player live recording this latency should be zero or small.
 	pub fn getLatencySamples(&self) -> u32;
 
+	/// Called in disable state (setActive not called with true) before setProcessing is called and processing will begin
 	pub fn setupProcessing (&self, setup: *const ProcessSetup) -> HRESULT;
 
+	/// Informs the plug-in about the processing state.
+	///
+	/// This will be called before any process calls start with true and after with false.
+	///
+	/// Note that setProcessing (false) may be called after setProcessing (true) without any process
+	/// calls.
+	///
+	/// Note this function could be called in the UI or in Processing Thread, thats why the plug-in
+	/// should only light operation (no memory allocation or big setup reconfiguration), this could be
+	/// used to reset some buffers (like Delay line or Reverb).
+	///
+	/// The host has to be sure that it is called only when the plug-in is enable (setActive (true)
+	/// was called).
 	pub fn setProcessing(&self, state: bool) -> HRESULT;
 
+	/// The Process call, where all information (parameter changes, event, audio buffer) are passed.
 	pub fn process (&self, data: *const ProcessData) -> HRESULT;
 
+	/// Gets tail size in samples.
+	///
+	/// For example, if the plug-in is a Reverb plug-in and it knows that the maximum length of the
+	/// Reverb is 2sec, then it has to return in getTailSamples() (in VST2 it was getGetTailSize ()):
+	/// `2 * sampleRate`.
+	///
+	/// This information could be used by host for offline processing, process optimization and downmix
+	/// (avoiding signal cut (clicks)). It should return:
+	/// - kNoTail when no tail
+	/// - x * sampleRate when x Sec tail.
+	/// - kInfiniteTail when infinite tail.
 	pub fn getTailSamples(&self) -> u32;
 }
 
+/// All parameter changes of a processing block: Vst::IParameterChanges
+///
+/// - \[host imp\]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// This interface is used to transmit any changes to be applied to parameters in the current
+/// processing block. A change can be caused by GUI interaction as well as automation. They are
+/// transmitted as a list of queues (\ref IParamValueQueue) containing only queues for parameters
+/// that actually did change.
+///
+/// See [IParamValueQueue], [ProcessData]
 #[interface("A4779663-0BB6-4A56-B443-84A8466FEB9D")]
 pub unsafe trait IParameterChanges : IUnknown {
+	/// Returns count of Parameter changes in the list.
 	pub fn getParameterCount(&self) -> i32;
 
+	/// Returns the queue at a given index.
 	pub fn getParameterData(&self, index: i32) -> *mut IParamValueQueue;
 
+	/// Adds a new parameter queue with a given ID at the end of the list,
+	/// returns it and its index in the parameter changes list.
 	pub fn addParameterData(&self, id: *const ParamID, index: *mut i32) -> *mut IParamValueQueue;
 }
 
+/// Queue of changes for a specific parameter: Vst::IParamValueQueue
+///
+/// - \[host imp\]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// The change queue can be interpreted as segment of an automation curve. For each processing block,
+/// a segment with the size of the block is transmitted to the processor. The curve is expressed
+/// as sampling points of a linear approximation of the original automation curve. If the original
+/// already is a linear curve, it can be transmitted precisely. A non-linear curve has to be converted
+/// to a linear approximation by the host. Every point of the value queue defines a linear section of
+/// the curve as a straight line from the previous point of a block to the new one. So the plug-in can
+/// calculate the value of the curve for any sample position in the block.
+///
+/// ### Implicit Points:
+///
+/// In each processing block, the section of the curve for each parameter is transmitted. In order to
+/// reduce the amount of points, the point at block position 0 can be omitted.
+/// - If the curve has a slope of 0 over a period of multiple blocks, only one point is transmitted for
+/// the block where the constant curve section starts. The queue for the following blocks will be empty
+/// as long as the curve slope is 0.
+/// - If the curve has a constant slope other than 0 over the period of several blocks, only the value
+/// for the last sample of the block is transmitted. In this case, the last valid point is at block
+/// position -1. The processor can calculate the value for each sample in the block by using a linear
+/// interpolation:
+///
+/// ~~~cpp
+/// //------------------------------------------------------------------------
+/// double x1 = -1; // position of last point related to current buffer
+/// double y1 = currentParameterValue; // last transmitted value
+///
+/// int32 pointTime = 0;
+/// ParamValue pointValue = 0;
+/// IParamValueQueue::getPoint (0, pointTime, pointValue);
+///
+/// double x2 = pointTime;
+/// double y2 = pointValue;
+///
+/// double slope = (y2 - y1) / (x2 - x1);
+/// double offset = y1 - (slope * x1);
+///
+/// double curveValue = (slope * bufferTime) + offset; // bufferTime is any position in buffer
+/// ~~~
+///
+/// ### Jumps
+///
+/// A jump in the automation curve has to be transmitted as two points: one with the old value and one
+/// with the new value at the next sample position.
+///
+/// ![automation.jpg](automation.jpg)
+///
+/// See [IParameterChanges], [ProcessData]
 #[interface("01263A18-ED07-4F6F-98C9-D3564686F9BA")]
 pub unsafe trait IParamValueQueue : IUnknown {
+	/// Returns its associated ID.
 	pub fn getParameterId(&self) -> ParamID;
 
+	/// Returns count of points in the queue.
 	pub fn getPointCount(&self) -> i32;
 
+	/// Gets the value and offset at a given index.
 	pub fn getPoint(&self, index: i32, sampleOffset: *mut i32, value: *mut ParamValue) -> HRESULT;
 
+	/// Adds a new value at the end of the queue, its index is returned.
 	pub fn addPoint(&self, sampleOffset: i32, value: ParamValue, index: *mut i32) -> HRESULT;
 }
 
-
+/// List of events to process: Vst::IEventList
+///
+/// - \[host imp\]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// See [ProcessData], [Event]
 #[interface("3A2C4214-3463-49FE-B2C4-F397B9695A44")]
 pub unsafe trait IEventList : IUnknown {
+	/// Returns the count of events.
 	pub fn getEventCount(&self) -> i32;
 
+	/// Gets parameter by index.
 	pub fn getEvent(&self, index: i32, e: *mut Event) -> HRESULT;
 
+	/// Adds a new event.
 	pub fn addEvent(&self, e: *const Event) -> HRESULT;
 }
 
-
 /// Host callback interface for an edit controller
+///
 /// - \[host imp\]
 /// - \[released: 3.0.0\]
 /// - \[mandatory\]
@@ -419,7 +625,7 @@ unsafe trait IComponentHandler : IUnknown
 	pub fn endEdit (&self, id: ParamID) -> HRESULT;
 
 	/// Instructs host to restart the component. This must be called in the UI-Thread context!
-	/// [flags] is a combination of [RestartFlags]
+	/// *flags* is a combination of *RestartFlags*
 	pub fn restartComponent (&self, flags: i32) -> HRESULT;
 }
 
@@ -448,6 +654,7 @@ impl ViewRect {
 }
 
 /// Callback interface passed to IPlugView.
+///
 /// - \[host imp\]
 /// - \[released: 3.0.0\]
 /// - \[mandatory\]
@@ -463,9 +670,11 @@ unsafe trait IPlugFrame : IUnknown
 }
 
 /// Plug-in definition of a view.
+///
 /// - \[plug imp\]
 /// - \[released: 3.0.0\]
-/// Sizing of a view
+///
+/// ### Sizing of a view
 ///
 /// Usually, the size of a plug-in view is fixed. But both the host and the plug-in can cause
 /// a view to be resized:
@@ -489,7 +698,7 @@ unsafe trait IPlugFrame : IUnknown
 ///
 /// **Please only resize the platform representation of the view when IPlugView::onSize () is called.**
 ///
-/// Keyboard handling
+/// ### Keyboard handling
 ///
 /// The plug-in view receives keyboard events from the host. A view implementation must not handle
 /// keyboard events by the means of platform callbacks, but let the host pass them to the view. The host
@@ -501,7 +710,8 @@ unsafe trait IPlugFrame : IUnknown
 unsafe trait IPlugView : IUnknown
 {
 	/// Is Platform UI Type supported
-	/// [uiType] : IDString of [platformUIType]
+	///
+	/// uiType : IDString of *platformUIType*
 	pub fn isPlatformTypeSupported(&self, uiType: FIDString) -> HRESULT;
 
 	/// The parent window of the view has been created, the (platform) representation of the view
@@ -557,51 +767,68 @@ unsafe trait IPlugView : IUnknown
 	pub fn checkSizeConstraint(&self, rect: *mut ViewRect) -> HRESULT;
 }
 
-
+/// Edit controller component interface: Vst::IEditController
+///
+/// - \[plug imp\]
+/// - \[released: 3.0.0\]
+/// - \[mandatory\]
+///
+/// The controller part of an effect or instrument with parameter handling (export, definition, conversion...).
+/// See [IComponent::getControllerClassId], *IMidiMapping*
 #[interface("DCD7BBE3-7742-448D-A874-AACC979C759E")]
 pub unsafe trait IEditController : IPluginBase {
+	/// Receives the component state.
 	pub fn setComponentState(&self, state: *const IBStream) -> HRESULT;
 
-	/** Sets the controller state. */
+	/// Sets the controller state.
 	pub fn setState(&self, state: *const IBStream) -> HRESULT;
 
-	/** Gets the controller state. */
+	/// Gets the controller state.
 	pub fn getState(&self, state: *const IBStream) -> HRESULT;
 
 	// parameters -------------------------
-	/** Returns the number of parameters exported. */
+	/// Returns the number of parameters exported.
 	pub fn getParameterCount(&self) -> i32;
-	/** Gets for a given index the parameter information. */
+
+	/// Gets for a given index the parameter information.
 	pub fn getParameterInfo(&self, paramIndex: i32, info: *mut ParameterInfo  /*out*/) -> HRESULT;
 
-	/** Gets for a given paramID and normalized value its associated string representation. */
+	/// Gets for a given paramID and normalized value its associated string representation.
 	pub fn getParamStringByValue(&self, id: ParamID, valueNormalized: ParamValue /*in*/, paramStringOut: String128) -> HRESULT;
-	/** Gets for a given paramID and string its normalized value. */
+
+	/// Gets for a given paramID and string its normalized value.
 	pub fn getParamValueByString(&self, id: ParamID, value: *const char, valueNormalized: *mut ParamValue) -> HRESULT;
 
-	/** Returns for a given paramID and a normalized value its plain representation
-		(for example -6 for -6dB - see ef vst3AutomationIntro). */
+	/// Returns for a given paramID and a normalized value its plain representation
+	///
+	/// (for example -6 for -6dB - see *vst3AutomationIntro*).
 	pub fn normalizedParamToPlain(&self, id: ParamID, valueNormalized: ParamValue) -> ParamValue;
-	/** Returns for a given paramID and a plain value its normalized value. (see ef vst3AutomationIntro) */
+
+	/// Returns for a given paramID and a plain value its normalized value. (see *vst3AutomationIntro*)
 	pub fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue;
 
-	/** Returns the normalized value of the parameter associated to the paramID. */
+	/// Returns the normalized value of the parameter associated to the paramID.
 	pub fn getParamNormalized(&self, id: ParamID) -> ParamValue;
-	/** Sets the normalized value to the parameter associated to the paramID. The controller must never
-	    pass this value-change back to the host via the IComponentHandler. It should update the according
-		GUI element(s) only!*/
+
+	/// Sets the normalized value to the parameter associated to the paramID.
+	///
+	/// The controller must never pass this value-change back to the host via the IComponentHandler. It
+	/// should update the according GUI element(s) only!
 	pub fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> HRESULT;
 
 	// handler ----------------------------
-	/** Gets from host a handler which allows the Plugin-in to communicate with the host.
-		Note: This is mandatory if the host is using the IEditController! */
+	/// Gets from host a handler which allows the Plugin-in to communicate with the host.
+	///
+	/// Note: This is mandatory if the host is using the IEditController!
 	pub fn setComponentHandler(&self, handler: *const IComponentHandler) -> HRESULT;
 
 	// view -------------------------------
-	/** Creates the editor view of the plug-in, currently only "editor" is supported, see ef ViewType.
-		The life time of the editor view will never exceed the life time of this controller instance. */
+	/// Creates the editor view of the plug-in
+	///
+	/// Currently only "editor" is supported, see *ViewType*.
+	///
+	/// The life time of the editor view will never exceed the life time of this controller instance.
 	pub fn createView(&self, name: FIDString) -> *const IPlugView;
-
 }
 
 #[cfg(test)]
