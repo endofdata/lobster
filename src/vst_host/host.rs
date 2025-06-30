@@ -1,6 +1,9 @@
+use crate::vst_host::host_application::HostApplication;
+
 use super::{plugin_library::PluginLibrary, Error};
 use asiolib::device::Device;
 use windows::core::GUID;
+use windows_core::IUnknown;
 
 pub struct BufferHandler {
 }
@@ -16,18 +19,23 @@ impl BufferHandler {
 }
 
 pub struct Host {
+	name: String,
 	device: Device,
 	buffer_handler: BufferHandler,
 	plugins: Vec<PluginLibrary>
 }
 
 impl Host {
-	pub fn new(clsid: &GUID) -> Result<Host, Error> {
+	pub fn new(clsid: &GUID, name: &str) -> Result<Host, Error> {
+		if name.bytes().len() > super::MAX_NAME_LENGTH {
+			return Err(Error::from_other(&format!("Length of encoded name must not exceed {} bytes.", super::MAX_NAME_LENGTH)));
+		}
 		let mut handler = BufferHandler::new();
 		Device::new(clsid, |buffers, in_count, out_count| handler.process(buffers, in_count, out_count))
 			.or_else(|e| Err(e.into()))
 			.and_then(|device|
 				Ok(Host {
+					name: name.to_string(),
 					device,
 					buffer_handler: handler,
 					plugins: Vec::<PluginLibrary>::new()
@@ -68,6 +76,14 @@ impl Host {
 
 	pub fn remove_all_plugin_libraries(&mut self) {
 		self.plugins.clear();
+	}
+
+	pub fn get_application(&self) -> IUnknown {
+		HostApplication::new(self).into()
+	}
+
+	pub fn get_name(&self) -> &str {
+		&self.name
 	}
 
 	fn process_buffers(input: Vec<Vec<f64>>, outputs: &mut [Vec<f64>]) {

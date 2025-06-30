@@ -24,10 +24,7 @@ fn main() -> Result<(), Error> {
 			data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
 		};
 
-		println!("as_fid_tring:   {}", vst_host::as_fid_string(&clsid));
-		println!("guid.to_string: {:?}", clsid);
-
-		let mut host = Host::new(&clsid)?;
+		let mut host = Host::new(&clsid, "Lobster")?;
 
 		let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 
@@ -41,14 +38,13 @@ fn main() -> Result<(), Error> {
 			println!("    {} {} {}: {} - {} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
 		}
 
-		if let Ok(plugin) = vst.create_plugin(std::ptr::null()) {
+		if let Ok(plugin) = vst.create_plugin(host.get_application()) {
 			println!("Created plugin");
 
 			let edit_controller : IEditController = plugin.get_edit_controller()
 				.or_else(|e| Err(Error::from_hresult("failed to get edit controller", e.code())))?;
 
 			let parameter_count = unsafe { edit_controller.getParameterCount() };
-
 			println!("  Plugin has {} parameter(s).", parameter_count);
 
 			let audio_processor = plugin.create_audio_processor()
