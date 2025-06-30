@@ -127,23 +127,24 @@ impl PluginLibrary {
 		if hr.is_err() {
 			Err(Error::from_hresult("Failed to initialize component", hr))
 		}
-		else
-		{
+		else {
 			component.cast::<IEditController>()
 				.or_else(|_| {
 					let mut class_id = GUID::zeroed();
-					if unsafe { component.getControllerClassId(&mut class_id) }.is_ok() {
-						self.create_instance::<IEditController>(&class_id, &IEditController::IID)
+					let hr = unsafe { component.getControllerClassId(&mut class_id) };
+
+					if hr.is_err() {
+						Err(Error::from_hresult("Could not get controller class id", hr))
 					}
 					else {
-						Err(Error::from_other("Could not create IEditController"))
+						self.create_instance::<IEditController>(&class_id, &IEditController::IID)
 					}
 				})
 				.and_then(|edit_controller| {
 					let hr = unsafe { edit_controller.initialize(context) };
 
 					if hr.is_err() {
-						Err(Error::from_other("Could not initialize IEditCotnroller"))
+						Err(Error::from_hresult("Could not initialize IEditController", hr))
 					}
 					else {
 						Ok(Plugin::new(component, edit_controller))

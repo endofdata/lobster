@@ -47,6 +47,18 @@ fn main() -> Result<(), Error> {
 			let parameter_count = unsafe { edit_controller.getParameterCount() };
 			println!("  Plugin has {} parameter(s).", parameter_count);
 
+			if let Some(plug_view) = unsafe {
+				if let Some(fred) = edit_controller.createView("editor".as_ptr()).as_mut() {
+					Some(fred.clone())
+				}
+				else {
+					None
+				}
+			} {
+				let can_resize = unsafe  { plug_view.canResize() }.is_ok();
+				println!("  PlugView can resize: {}", can_resize);
+			}
+
 			let audio_processor = plugin.create_audio_processor()
 				.or_else(|e| Err(Error::from_hresult("failed to create audio processor", e.code())))?;
 
