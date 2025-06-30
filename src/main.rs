@@ -31,11 +31,8 @@ fn main() -> Result<(), Error> {
 
 		let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 
-		let vst = host.add_plugin_library(library_path)?;
-
-		// TODO: use vst for audio processing / creation
-		//let vst = host.get_audio_processor(&vst_id)?;
-		//let _test = host.get_component(&vst_id)?;
+		let vst_id = host.add_plugin_library(library_path)?;
+		let vst = host.get_plugin_library(&vst_id)?;
 
 		println!("Created VST:\n  Vendor: {}\n  URL: {}\n  EMail: {}\n  Flags: {:?}\n  Class Infos:",
 			vst.get_vendor(), vst.get_url(), vst.get_email(), vst.get_flags());

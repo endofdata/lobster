@@ -34,13 +34,13 @@ impl Host {
 				}))
 	}
 
-	pub fn add_plugin_library(&mut self, path: &str) -> Result<&PluginLibrary, Error> {
+	pub fn add_plugin_library(&mut self, path: &str) -> Result<String, Error> {
 		// TODO: check whether plugin already loaded
 		match PluginLibrary::load(path) {
 			Ok(lib) => {
 				let id = lib.get_id().to_string();
 				self.plugins.push(lib);
-				self.get_plugin_library(&id)
+				Ok(id)
 			},
 			Err(err) => Err(err)
 		}
