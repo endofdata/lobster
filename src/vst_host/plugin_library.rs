@@ -123,9 +123,12 @@ impl PluginLibrary {
 		ClassInfoIter::new(self)
 	}
 
-	pub fn create_plugin(&self, context: *const IUnknown) -> Result<Plugin, Error> {
+	pub fn create_plugin(&self, context: IUnknown) -> Result<Plugin, Error> {
+		let raw_context = context.as_raw() as *const IUnknown;
+
 		let component = self.create_component_by_category::<IComponent>(VST_AUDIO_EFFECT_CLASS)?;
-		let hr = unsafe { component.initialize(context) };
+		let hr = unsafe { component.initialize(raw_context) };
+
 		if hr.is_err() {
 			Err(Error::from_hresult("Failed to initialize component", hr))
 		}
@@ -143,7 +146,7 @@ impl PluginLibrary {
 					}
 				})
 				.and_then(|edit_controller| {
-					let hr = unsafe { edit_controller.initialize(context) };
+					let hr = unsafe { edit_controller.initialize(raw_context) };
 
 					if hr.is_err() {
 						Err(Error::from_hresult("Could not initialize IEditController", hr))
