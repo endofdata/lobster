@@ -42,7 +42,7 @@ impl<'a> Iterator for ClassInfoIter<'a> {
 
 pub struct PluginLibrary {
 	id: String,
-	vst: Option<Library>,
+	lib: Option<Library>,
 	factory: Option<IPluginFactory>,
 	factory_2: Option<IPluginFactory2>,
 	factory_3: Option<IPluginFactory3>,
@@ -56,18 +56,20 @@ impl PluginLibrary {
 	pub fn load(path: &str) -> Result<PluginLibrary, Error> {
 		unsafe {
 			match libloading::Library::new(path) {
-				Ok(vst) => PluginLibrary::new(&sha256::digest(path), vst),
+				Ok(lib) => PluginLibrary::new(&sha256::digest(path), lib),
 				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", path, error)))
 			}
 		}
 	}
 
-	pub fn new(id: &str, vst: Library) -> Result<PluginLibrary, Error> {
+	pub fn new(id: &str, lib: Library) -> Result<PluginLibrary, Error> {
 		unsafe {
-			if let Ok(init_dll) = vst.get::<unsafe extern "C" fn()>(b"InitDll") {
-				init_dll();
+			if let Ok(init_dll) = lib.get::<unsafe extern "C" fn() -> bool>(b"InitDll") {
+				if !init_dll() {
+					return Err(Error::from_other("InitDll() failed."));
+				}
 			}
-			match vst.get::<unsafe extern "C" fn() -> Option<IPluginFactory>>(b"GetPluginFactory") {
+			match lib.get::<unsafe extern "C" fn() -> Option<IPluginFactory>>(b"GetPluginFactory") {
 				Ok(get_factory) => match get_factory() {
 					Some(factory) => {
 						let mut factory_info = PFactoryInfo::new();
@@ -75,12 +77,12 @@ impl PluginLibrary {
 						if hr.is_err() {
 							return Err(Error::from_hresult("Failed to get factory info.", hr));
 						}
-						let factory_2 =factory.cast::<IPluginFactory2>().ok();
+						let factory_2 = factory.cast::<IPluginFactory2>().ok();
 						let factory_3 = factory.cast::<IPluginFactory3>().ok();
 
 						Ok(PluginLibrary {
 							id: id.to_string(),
-							vst: Some(vst),
+							lib: Some(lib),
 							factory: Some(factory),
 							factory_2,
 							factory_3,
@@ -251,7 +253,7 @@ impl PluginLibrary {
 	}
 
 	fn close(&mut self) -> Result<(), Error> {
-		match self.vst.take() {
+		match self.lib.take() {
 			Some(lib) => {
 				unsafe {
 					let opt_method : Result<libloading::Symbol<unsafe extern "C" fn()>, libloading::Error> = lib.get(b"ExitDll");
