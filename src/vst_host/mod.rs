@@ -21,20 +21,20 @@ mod routing_info;
 mod speaker_arrangement;
 mod plugin_library;
 mod plugin;
+mod host_application;
 pub mod host;
 pub mod error;
 
 pub use error::*;
 
 use std::ffi::c_void;
-
 use windows::core::{interface, GUID, HRESULT, IUnknown, IUnknown_Vtbl};
-use pclass_info::{PClassInfo, PClassInfo2, PClassInfoW};
 
 use self::bus_direction::BusDirection;
 use self::bus_info::BusInfo;
 use self::io_mode::IoMode;
 use self::media_type::MediaType;
+use self::pclass_info::{PClassInfo, PClassInfo2, PClassInfoW};
 use self::pfactory_info::PFactoryInfo;
 use self::process_data::ProcessData;
 use self::process_setup::ProcessSetup;
@@ -134,19 +134,22 @@ pub fn as_fid_string(guid: &windows::core::GUID) -> String {
 	format!("{:?}", guid)
 }
 
+pub const MAX_NAME_LENGTH : usize = 32;
+pub const VST_AUDIO_EFFECT_CLASS : &'static str = "Audio Module Class";
+pub const STRING_128_SIZE : usize = 128;
+
 pub type ParamID = u32;
 pub type ParamValue = f64;
 pub type TQuarterNotes = f64;
 pub type TSamples = i64;
 pub type NoteExpressionTypeID = u32;
 pub type NoteExpressionValue = f64;
-pub type String128 = *mut [char;128];
+pub type String128 = *mut u16; //*mut [u8; STRING_128_SIZE];
 // TODO: Check VST FIDString format for separators or brackets
-pub type FIDString = *mut [u8;32];
+pub type FIDString = *const u8;
 pub type UnitID = i32;
 pub type wchar_t = u32;
 
-pub const VST_AUDIO_EFFECT_CLASS : &'static str = "Audio Module Class";
 
 //------------------------------------------------------------------------
 /// Flags used for IComponentHandler::restartComponent
@@ -336,7 +339,7 @@ pub unsafe trait IComponent : IPluginBase {
 /// Basic VST host application interface.
 #[interface("58E595CC-DB2D-4969-8B6A-AF8C36A664E5")]
 pub unsafe trait IHostApplication : IUnknown {
-	pub fn getName(&self, name: *mut u8) -> i32;
+	pub fn getName(&self, name: String128) -> i32;
 
 	pub fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
 }
@@ -610,7 +613,7 @@ pub unsafe trait IEventList : IUnknown {
 /// Cause the host to react on configuration changes (restartComponent).
 /// see [IEditController]
 #[interface("93A0BEA3-0BD0-45DB-8E89-0B0CC1E46AC6")]
-unsafe trait IComponentHandler : IUnknown
+pub unsafe trait IComponentHandler : IUnknown
 {
 	/// To be called before calling a performEdit (e.g. on mouse-click-down event).
 	/// This must be called in the UI-Thread context!
@@ -661,7 +664,7 @@ impl ViewRect {
 ///
 /// Enables a plug-in to resize the view and cause the host to resize the window.
 #[interface("367FAF01-AFA9-4693-8D4D-A2A0ED0882A3")]
-unsafe trait IPlugFrame : IUnknown
+pub unsafe trait IPlugFrame : IUnknown
 {
 	/// Called to inform the host about the resize of a given view.
 	///
@@ -707,7 +710,7 @@ unsafe trait IPlugFrame : IUnknown
 ///
 /// see [IPlugFrame], platformUIType
 #[interface("5BC32507-D060-49EA-A615-1B522B755B29")]
-unsafe trait IPlugView : IUnknown
+pub unsafe trait IPlugView : IUnknown
 {
 	/// Is Platform UI Type supported
 	///
@@ -828,7 +831,7 @@ pub unsafe trait IEditController : IPluginBase {
 	/// Currently only "editor" is supported, see *ViewType*.
 	///
 	/// The life time of the editor view will never exceed the life time of this controller instance.
-	pub fn createView(&self, name: FIDString) -> *const IPlugView;
+	pub fn createView(&self, name: FIDString) -> *mut IPlugView;
 }
 
 #[cfg(test)]

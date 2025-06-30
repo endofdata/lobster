@@ -73,8 +73,7 @@ fn main() -> Result<(), Error> {
 
 		println!("Shutting down");
 
-		// drop VSTs and host before uninitializing COM
-		//drop(vst);
+		// drop host before uninitializing COM
 		drop(host);
 
 		unsafe {
