@@ -13,10 +13,17 @@ pub struct Error {
 }
 
 impl Error {
-	pub fn from_hresult(description: &str, hr: HRESULT) -> Error {
-		Error {
+	pub fn from_hresult(description: &str, hr: HRESULT) -> Self {
+		Self {
 			description: description.into(),
 			source: Some(NestedError::System(hr))
+		}
+	}
+
+	pub fn from_windows(description: &str, e: windows::core::Error) -> Self {
+		Self {
+			description: format!("{}: {}", description, e.message()),
+			source: Some(NestedError::System(e.code()))
 		}
 	}
 

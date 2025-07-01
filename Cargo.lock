@@ -85,6 +85,8 @@ dependencies = [
  "sha256",
  "windows",
  "windows-core",
+ "windows-future",
+ "windows-numerics",
 ]
 
 [[package]]

@@ -831,7 +831,7 @@ pub unsafe trait IEditController : IPluginBase {
 	/// Currently only "editor" is supported, see *ViewType*.
 	///
 	/// The life time of the editor view will never exceed the life time of this controller instance.
-	pub fn createView(&self, name: FIDString) -> *mut IPlugView;
+	pub fn createView(&self, name: FIDString) -> *const IPlugView;
 }
 
 #[cfg(test)]
