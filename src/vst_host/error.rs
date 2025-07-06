@@ -39,20 +39,24 @@ pub struct Error {
 
 #[allow(dead_code)]
 impl Error {
-	pub fn from_other(description: &str) -> Error {
-		Error::from_source(description, ErrorSource::Other)
+	pub fn from_other(description: &str) -> Self {
+		Self::from_source(description, ErrorSource::Other)
 	}
 
-	pub fn from_hresult(description: &str, hresult: HRESULT) -> Error {
-		Error::from_source(description, ErrorSource::System(hresult))
+	pub fn from_hresult(description: &str, hresult: HRESULT) -> Self {
+		Self::from_source(description, ErrorSource::System(hresult))
 	}
 
-	pub fn from_asio(description: &str, asio: ASIOError) -> Error {
-		Error::from_source(description, ErrorSource::ASIO(asio))
+	pub fn from_asio(description: &str, asio: ASIOError) -> Self {
+		Self::from_source(description, ErrorSource::ASIO(asio))
 	}
 
-	pub fn from_source(description: &str, source: ErrorSource) -> Error {
-		Error {
+	pub fn from_windows(description: &str, e: windows::core::Error) -> Self {
+		Self::from_source(&format!("{}: {}", description, e.message()), ErrorSource::System(e.code()))
+	}
+
+	pub fn from_source(description: &str, source: ErrorSource) -> Self {
+		Self {
 			description: description.into(),
 			source,
 		}
@@ -75,7 +79,7 @@ impl From<asiolib::ErrorSource> for ErrorSource {
 
 impl From<asiolib::Error> for Error {
 	fn from(value: asiolib::Error) -> Self {
-		Error {
+		Self {
 			description: format!("{:?}", value),
 			source: (*value.get_source()).into()
 		}

@@ -53,6 +53,7 @@ pub fn shutdown_dispatcher_queue_controller_and_wait(
     Ok(message.wParam.0 as i32)
 }
 
+#[allow(dead_code)]
 pub fn shutdown_dispatcher_queue_controller_and_exit(
     controller: &DispatcherQueueController,
     exit_code: i32,

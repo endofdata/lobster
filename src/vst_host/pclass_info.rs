@@ -18,7 +18,7 @@ pub struct PClassInfo {
 impl PClassInfo {
 	pub fn new() -> PClassInfo {
 		PClassInfo {
-			cid: empty_guid(),
+			cid: GUID::zeroed(),
 			cardinality: ClassCardinality::NoValue,
 			category: [0; CATEGORY_SIZE],
 			name: [0; NAME_SIZE]
@@ -55,7 +55,7 @@ pub struct PClassInfo2 {
 impl PClassInfo2 {
 	pub fn new() -> PClassInfo2 {
 		PClassInfo2 {
-			cid: empty_guid(),
+			cid: GUID::zeroed(),
 			cardinality: ClassCardinality::NoValue,
 			category: [0; CATEGORY_SIZE],
 			name: [0; NAME_SIZE],
@@ -105,7 +105,7 @@ pub struct PClassInfoW {
 impl PClassInfoW {
 	pub fn new() -> PClassInfoW {
 		PClassInfoW {
-			cid: empty_guid(),
+			cid: GUID::zeroed(),
 			cardinality: ClassCardinality::NoValue,
 			category: [0; CATEGORY_SIZE],
 			name: [0; NAME_SIZE],

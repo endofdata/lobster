@@ -6,7 +6,10 @@ use windows::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         System::{LibraryLoader::GetModuleHandleW, WinRT::Composition::ICompositorDesktopInterop},
         UI::WindowsAndMessaging::{
-            AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowLongPtrW, LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MB_ICONINFORMATION, MESSAGEBOX_STYLE, SW_SHOW, WM_DESTROY, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCREATE, WM_RBUTTONDOWN, WM_SIZE, WM_SIZING, WNDCLASSW, WS_EX_NOREDIRECTIONBITMAP, WS_OVERLAPPEDWINDOW
+            AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowLongPtrW,
+			LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow,
+			CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MB_ICONINFORMATION, SW_SHOW,
+			WM_DESTROY, WM_LBUTTONDOWN, WM_NCCREATE, WNDCLASSW, WS_EX_NOREDIRECTIONBITMAP, WS_OVERLAPPEDWINDOW
         },
     },
     UI::Composition::{Compositor, Desktop::DesktopWindowTarget},
@@ -171,6 +174,7 @@ fn get_window_size(window_handle: HWND) -> Result<SizeInt32> {
     }
 }
 
+#[allow(dead_code)]
 fn get_mouse_position(lparam: LPARAM) -> (isize, isize) {
     let x = lparam.0 & 0xffff;
     let y = (lparam.0 >> 16) & 0xffff;
