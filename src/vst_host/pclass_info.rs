@@ -1,4 +1,4 @@
-use super::{class_cardinality::ClassCardinality, utf8_copy, utf16_copy_w, empty_guid, string_from, string_from_w};
+use super::{class_cardinality::ClassCardinality, str_conv::StrConv };
 use windows::core::GUID;
 
 pub const CATEGORY_SIZE : usize = 32;
@@ -34,8 +34,8 @@ impl PClassInfo {
 	pub fn init(&mut self, cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
-		utf8_copy(category, &mut self.category);
-		utf8_copy(name, &mut self.name);
+		StrConv::utf8_copy(category, &mut self.category);
+		StrConv::utf8_copy(name, &mut self.name);
 	}
 }
 
@@ -78,13 +78,13 @@ impl PClassInfo2 {
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
-		utf8_copy(category, &mut self.category);
-		utf8_copy(name, &mut self.name);
+		StrConv::utf8_copy(category, &mut self.category);
+		StrConv::utf8_copy(name, &mut self.name);
 		self.class_flags = class_flags;
-		utf8_copy(sub_categories, &mut self.sub_categories);
-		utf8_copy(vendor, &mut self.vendor);
-		utf8_copy(version, &mut self.version);
-		utf8_copy(sdk_version, &mut self.sdk_version);
+		StrConv::utf8_copy(sub_categories, &mut self.sub_categories);
+		StrConv::utf8_copy(vendor, &mut self.vendor);
+		StrConv::utf8_copy(version, &mut self.version);
+		StrConv::utf8_copy(sdk_version, &mut self.sdk_version);
 	}
 }
 
@@ -128,13 +128,13 @@ impl PClassInfoW {
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
-		utf8_copy(category, &mut self.category);
-		utf16_copy_w(name, &mut self.name);
+		StrConv::utf8_copy(category, &mut self.category);
+		StrConv::utf16_copy_w(name, &mut self.name);
 		self.class_flags = class_flags;
-		utf8_copy(sub_categories, &mut self.sub_categories);
-		utf16_copy_w(vendor, &mut self.vendor);
-		utf16_copy_w(version, &mut self.version);
-		utf16_copy_w(sdk_version, &mut self.sdk_version);
+		StrConv::utf8_copy(sub_categories, &mut self.sub_categories);
+		StrConv::utf16_copy_w(vendor, &mut self.vendor);
+		StrConv::utf16_copy_w(version, &mut self.version);
+		StrConv::utf16_copy_w(sdk_version, &mut self.sdk_version);
 	}
 }
 
@@ -159,8 +159,8 @@ impl ClassInfo {
 			cid: src.cid,
 			cardinality: src.cardinality,
 			class_flags: 0,
-			category: string_from(&src.category, false),
-			name: string_from(&src.name, false),
+			category: StrConv::string_from(&src.category, false),
+			name: StrConv::string_from(&src.name, false),
 			sub_categories: String::new(),
 			vendor: String::new(),
 			version: String::new(),
@@ -173,12 +173,12 @@ impl ClassInfo {
 			cid: src.cid,
 			cardinality: src.cardinality,
 			class_flags: src.class_flags,
-			category: string_from(&src.category, false),
-			name: string_from(&src.name, false),
-			sub_categories: string_from(&src.sub_categories, false),
-			vendor: string_from(&src.vendor, false),
-			version: string_from(&src.version, false),
-			sdk_version: string_from(&src.sdk_version, false)
+			category: StrConv::string_from(&src.category, false),
+			name: StrConv::string_from(&src.name, false),
+			sub_categories: StrConv::string_from(&src.sub_categories, false),
+			vendor: StrConv::string_from(&src.vendor, false),
+			version: StrConv::string_from(&src.version, false),
+			sdk_version: StrConv::string_from(&src.sdk_version, false)
 		}
 	}
 
@@ -187,12 +187,12 @@ impl ClassInfo {
 			cid: src.cid,
 			cardinality: src.cardinality,
 			class_flags: src.class_flags,
-			category: string_from(&src.category, false),
-			name: string_from_w(&src.name),
-			sub_categories: string_from(&src.sub_categories, false),
-			vendor: string_from_w(&src.vendor),
-			version: string_from_w(&src.version),
-			sdk_version: string_from_w(&src.sdk_version)
+			category: StrConv::string_from(&src.category, false),
+			name: StrConv::string_from_w(&src.name),
+			sub_categories: StrConv::string_from(&src.sub_categories, false),
+			vendor: StrConv::string_from_w(&src.vendor),
+			version: StrConv::string_from_w(&src.version),
+			sdk_version: StrConv::string_from_w(&src.sdk_version)
 		}
 	}
 }

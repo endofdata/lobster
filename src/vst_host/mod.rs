@@ -22,6 +22,9 @@ mod speaker_arrangement;
 mod plugin_library;
 mod plugin;
 mod host_application;
+mod connection_proxy;
+mod str_conv;
+
 pub mod host;
 pub mod error;
 
@@ -42,97 +45,6 @@ use self::routing_info::RoutingInfo;
 use self::speaker_arrangement::SpeakerArrangement;
 use self::vst_event::Event;
 
-fn utf16_copy(value: &str, target: &mut [u8]) -> usize {
-	let mut pos = 0;
-	for c in value.encode_utf16().take((target.len() / 2) - 1) {
-		target[pos] = (c & 0xFFu16) as u8;
-		target[pos + 1] = ((c >> 8) & 0xFFu16) as u8;
-		pos += 2;
-	}
-	target[pos] = 0;
-	target[pos + 1] = 0;
-	return pos;
-}
-
-fn utf8_copy(value: &str, target: &mut [u8]) -> usize {
-	match target.len() {
-		0 => 0,
-		1 => {
-			target[0] = 0;
-			0
-		},
-		len => {
-			let mut bndry = usize::min(len - 1, value.len());
-			while bndry > 0 && !value.is_char_boundary(bndry) {
-				bndry -= 1;
-			}
-			if bndry > 0 {
-				for (pos, c) in value.bytes().take(bndry).enumerate() {
-					target[pos] = c;
-				}
-				target[bndry] = 0;
-				bndry
-			}
-			else {
-				0
-			}
-		}
-	}
-}
-
-fn utf16_copy_w(value: &str, target: &mut [u16]) -> usize {
-	let mut pos = 0;
-	for c in value.encode_utf16().take(target.len() - 1) {
-		target[pos] = c;
-		pos += 1;
-	}
-	target[pos] = 0;
-	return pos;
-}
-
-fn string_from(value: &[u8], is_utf16: bool) -> String {
-	if is_utf16 {
-		let mut pos = 0;
-		let max = value.len();
-		let mut conv: Vec<u16> = vec![0; max / 2];
-		while pos < max - 1 {
-			let codepoint = value[pos] as u16 | ((value[pos + 1] as u16) << 8);
-			conv.push(codepoint);
-			if codepoint == 0 {
-				break;
-			}
-			pos += 2;
-		}
-		String::from_utf16(&conv).unwrap()
-	} else {
-		// TODO: Ist THIS really required?!? Only to get all bytes before the zero and forward it?!?
-		String::from_utf8(value.iter().map(|b| *b).take_while(|b| *b != 0u8).collect()).unwrap()
-	}
-}
-
-#[allow(dead_code)]
-fn string_from_w(value: &[u16]) -> String {
-	let vec: Vec<u16> = value
-		.iter()
-		.map(|w| *w)
-		.take_while(|w| *w != 0u16)
-		.collect();
-	String::from_utf16(&vec).unwrap()
-}
-
-fn empty_guid() -> windows::core::GUID {
-	windows::core::GUID {
-		data1: 0,
-		data2: 0,
-		data3: 0,
-		data4: [0; 8],
-	}
-}
-
-pub fn as_fid_string(guid: &windows::core::GUID) -> String {
-	// TODO: Check format (was: guid.to_string())
-	format!("{:?}", guid)
-}
 
 pub const MAX_NAME_LENGTH : usize = 32;
 pub const VST_AUDIO_EFFECT_CLASS : &'static str = "Audio Module Class";
@@ -834,46 +746,89 @@ pub unsafe trait IEditController : IPluginBase {
 	pub fn createView(&self, name: FIDString) -> *const IPlugView;
 }
 
-#[cfg(test)]
-mod test {
-	use super::{utf8_copy, utf16_copy};
+/// Attribute list used in IMessage and IStreamAttributes: Vst::IAttributeList
+///
+/// - [host imp]
+/// - [released: 3.0.0]
+/// - [mandatory]
+///
+/// An attribute list associates values with a key (id: some predefined keys can be found in \ref presetAttributes).
+#[interface("1E5F0AEB-CC7F-4533-A254-401138AD5EE4")]
+pub unsafe trait IAttributeList : IUnknown {
+	/// Sets integer value.
+	pub fn setInt(&self, id: AttrID, value: i64) -> HRESULT;
 
-	#[test]
-	pub fn can_copy_utf16() {
-		let value = "Thornton Wilder";
-		let mut target = [0u8; 32];
-		let byte_count = utf16_copy(value, &mut target);
+	/// Gets integer value.
+	pub fn getInt(&self, id: AttrID, value: *mut i64) -> HRESULT;
 
-		assert_eq!(byte_count & 1, 0, "byte count should be an even number");
+	/// Sets float value.
+	pub fn setFloat(&self, id: AttrID, value: f64) -> HRESULT;
 
-		let utf_16 : &[u16] = unsafe { std::slice::from_raw_parts((&target as *const u8) as *const u16, byte_count / 2) };
-		let result = String::from_utf16_lossy(utf_16);
+	/// Gets float value.
+	pub fn getFloat(&self, id: AttrID, value: *mut f64) -> HRESULT;
 
-		assert_eq!(result, value, "copying as utf16 should be lossless");
+	/// Sets string value (UTF16)
+	///
+	/// str must be null-terminated
+	pub fn setString(&self, id: AttrID, str: *const u16) -> HRESULT;
 
-		let mut odd_target = [0u8; 7];
-		let byte_count = utf16_copy("123", &mut odd_target);
+	/// Gets string value (UTF16).
+	///
+	/// Note that Size is in Byte, not the string Length!
+	/// Do not forget to multiply the length by sizeof (TChar)!
+	pub fn getString(&self, id: AttrID, str: *mut u16, sizeInBytes: u32) -> HRESULT;
 
-		assert_eq!(byte_count, 4, "utf16_copy should use only even number of target bytes");
-	}
+	/// Sets binary data.
+	pub fn setBinary(&self, id: AttrID, data: *const std::ffi::c_void, sizeInBytes: u32) -> HRESULT;
 
-	#[test]
-	pub fn can_copy_utf8() {
-		let mut target = [0u8; 16];
-
-		for (value, expect) in [
-			("Simple Text", "Simple Text"),
-			// this is German for 'Beautiful shit'
-			("Schöne Scheiße", "Schöne Scheiß"),
-			// this is German for 'Hangs at the end'
-			("Hängt am Ende drüber", "Hängt am Ende "),
-			// this is Tulu for 'What do we have here?'
-			("ನಮಕ್ ಮುಲ್ಪ ದಾದ ಉಂಡು?", "ನಮಕ್ "),
-			("", "")] {
-			let copied = utf8_copy(value, &mut target);
-			let result = String::from_utf8_lossy(&target[0..copied]);
-
-			assert_eq!(result, expect);
-		}
-	}
+	/// Gets binary data.
+	pub fn getBinary(&self, id: AttrID, data: *mut std::ffi::c_void, sizeInBytes: &u32) -> HRESULT;
 }
+
+
+/// Private plug-in message: Vst::IMessage
+///
+/// - [host imp]
+/// - [create via IHostApplication::createInstance]
+/// - [released: 3.0.0]
+/// - [mandatory]
+///
+/// Messages are sent from a VST controller component to a VST editor component and vice versa.
+/// see IAttributeList, IConnectionPoint, \ref vst3Communication
+#[interface("936F033B-C6C0-47DB-BB08-82F813C1E613")]
+pub unsafe trait IMessage : IUnknown
+{
+/// Returns the message ID (for example "TextMessage").
+	pub fn getMessageID(&self) -> FIDString;
+
+	/// Sets a message ID (for example "TextMessage").
+	pub fn setMessageID(&self, id: FIDString);
+
+	/// Returns the attribute list associated to the message.
+	pub fn getAttributes(&self) -> *const IAttributeList;
+}
+
+/// Connect a component with another one: Vst::IConnectionPoint
+///
+/// - [plug imp]
+/// - [host imp]
+/// - [released: 3.0.0]
+/// - [mandatory]
+///
+/// This interface is used for the communication of separate components.
+/// Note that some hosts will place a proxy object between the components so that they are not directly connected.
+///
+/// see \ref vst3Communication
+#[interface("70A4156F-6E6E-4026-9891-48BFAA60D8D1")]
+pub unsafe trait IConnectionPoint : IUnknown
+{
+	/// Connects this instance with another connection point.
+	pub fn connect(&mut self, dst: *const IConnectionPoint) -> HRESULT;
+
+	/// Disconnects a given connection point from this.
+	pub fn disconnect(&self, dst: *const IConnectionPoint) -> HRESULT;
+
+	/// Called when a message has been sent from the connection point to this.
+	pub fn notify (&self, msg: *const IMessage) -> HRESULT;
+}
+
