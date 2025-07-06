@@ -1,10 +1,11 @@
 use libloading::Library;
 use windows::core::{IUnknown, Interface, GUID};
+use crate::vst_host::connection_proxy::ConnectionProxy;
 use crate::vst_host::factory_flags::FactoryFlags;
 use crate::vst_host::pclass_info::{ClassInfo, PClassInfo, PClassInfo2, PClassInfoW};
 use crate::vst_host::pfactory_info::PFactoryInfo;
 use crate::vst_host::plugin::Plugin;
-use crate::vst_host::{IEditController, IPluginFactory2, IPluginFactory3, VST_AUDIO_EFFECT_CLASS};
+use crate::vst_host::{IConnectionPoint, IEditController, IPluginFactory2, IPluginFactory3, VST_AUDIO_EFFECT_CLASS};
 
 use super::{IPluginFactory, IComponent};
 use super::Error;
@@ -152,9 +153,38 @@ impl PluginLibrary {
 						Err(Error::from_hresult("Could not initialize IEditController", hr))
 					}
 					else {
+						Self::connect_components(&component, &edit_controller)?;
 						Ok(Plugin::new(component, edit_controller))
 					}
 				})
+		}
+	}
+
+	fn connect_components(component: &IComponent, edit_controller: &IEditController) -> Result<(), Error>
+	{
+		let comp_cp : IConnectionPoint = component.cast()
+			.or_else(|e| Err(Error::from_windows("Failed to get connection point for component", e)))?;
+
+		let edit_cp : IConnectionPoint = edit_controller.cast()
+			.or_else(|e| Err(Error::from_windows("Failed to get connection point for edit controller", e)))?;
+
+		let comp_proxy : IConnectionPoint = ConnectionProxy::new(comp_cp.clone()).into();
+		let edit_proxy : IConnectionPoint = ConnectionProxy::new(edit_cp.clone()).into();
+
+		let hr = unsafe { comp_proxy.connect(edit_cp.as_raw() as *const IConnectionPoint) };
+
+		if hr.is_err() {
+			Err(Error::from_hresult("Failed to connect edit controller to component proxy", hr))
+		}
+		else {
+			let hr = unsafe { edit_proxy.connect (comp_cp.as_raw() as *const IConnectionPoint) };
+
+			if hr.is_err() {
+				Err(Error::from_hresult("Failed to connect component to edit controller proxy", hr))
+			}
+			else {
+				Ok(())
+			}
 		}
 	}
 

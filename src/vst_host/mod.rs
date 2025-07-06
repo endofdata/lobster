@@ -61,6 +61,7 @@ pub type String128 = *mut u16; //*mut [u8; STRING_128_SIZE];
 pub type FIDString = *const u8;
 pub type UnitID = i32;
 pub type wchar_t = u32;
+pub type AttrID = *const u8;
 
 
 //------------------------------------------------------------------------
