@@ -1,5 +1,6 @@
 use libloading::Library;
 use windows::core::{IUnknown, Interface, GUID};
+use windows_core::ComObject;
 use crate::vst_host::connection_proxy::ConnectionProxy;
 use crate::vst_host::factory_flags::FactoryFlags;
 use crate::vst_host::pclass_info::{ClassInfo, PClassInfo, PClassInfo2, PClassInfoW};
@@ -10,18 +11,22 @@ use crate::vst_host::{IConnectionPoint, IEditController, IPluginFactory2, IPlugi
 use super::{IPluginFactory, IComponent};
 use super::Error;
 
+/// Iterator over [ClassInfo] as provided by [PluginLibrary::get_class_infos]
 pub struct ClassInfoIter<'a> {
-	factory: &'a PluginLibrary,
+	lib: &'a PluginLibrary,
 	pos: usize,
 	max: usize
 }
 
 impl<'a> ClassInfoIter<'a> {
-	pub fn new(factory: &'a PluginLibrary) -> Self {
+	/// Constructor
+	///
+	/// Creates a new instance to enumerate the class infos of a [PlugInLibrary]
+	pub fn new(lib: &'a PluginLibrary) -> Self {
 		Self {
-			factory,
+			lib,
 			pos: 0,
-			max: factory.count_classes()
+			max: lib.count_classes()
 		}
 	}
 }
@@ -31,7 +36,7 @@ impl<'a> Iterator for ClassInfoIter<'a> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.pos < self.max {
-			let ci = self.factory.get_class_info(self.pos).ok();
+			let ci = self.lib.get_class_info(self.pos).ok();
 			self.pos += 1;
 			ci
 		}
@@ -41,29 +46,41 @@ impl<'a> Iterator for ClassInfoIter<'a> {
 	}
 }
 
+/// A VST plugin library
 pub struct PluginLibrary {
 	id: String,
 	lib: Option<Library>,
 	factory: Option<IPluginFactory>,
 	factory_2: Option<IPluginFactory2>,
 	factory_3: Option<IPluginFactory3>,
-	vendor: String,
-	url: String,
-	email: String,
+	vendor: Option<String>,
+	url: Option<String>,
+	email: Option<String>,
 	flags: FactoryFlags,
 }
 
 impl PluginLibrary {
-	pub fn load(path: &str) -> Result<PluginLibrary, Error> {
+	/// Loads the VST plugin from [path]
+	///
+	/// The unique identifier as accessible from `PluginFactory::get_id()` is set to the [sha256] digest
+	/// of the `path` parameter.
+	pub fn load(path: &str) -> Result<Self, Error> {
 		unsafe {
 			match libloading::Library::new(path) {
-				Ok(lib) => PluginLibrary::new(&sha256::digest(path), lib),
+				Ok(lib) => Self::new(&sha256::digest(path), lib),
 				Err(error) => Err(Error::from_other(&format!("Failed to load VST '{}': {:?}", path, error)))
 			}
 		}
 	}
 
-	pub fn new(id: &str, lib: Library) -> Result<PluginLibrary, Error> {
+	/// Contructor
+	///
+	/// Creates a new instance for the given *lib*. This will call the optional _InitDll_ method, if
+	/// provided and the _GetPluginFactory_ method to create the [IPluginFactory] interface. The
+	/// plugin factory information (vendor, url, email and flags) is extracted and can be accessed
+	/// by the corresponding *get_** methods, i.e. *PluginLibrary::get_vendor()*. Finally, the optional
+	/// extended factory interfaces [IPluginFactory2] and [IPluginFactory3] are queried.
+	pub fn new(id: &str, lib: Library) -> Result<Self, Error> {
 		unsafe {
 			if let Ok(init_dll) = lib.get::<unsafe extern "C" fn() -> bool>(b"InitDll") {
 				if !init_dll() {
@@ -100,6 +117,10 @@ impl PluginLibrary {
 		}
 	}
 
+	/// Gets a unique identifier
+	///
+	/// For instances created by `load(...)` this is the [sha256] digest of the library path.
+	/// Instances created by `new(...)` method may use an arbitrary identifier chosen by the caller.
 	pub fn get_id(&self) -> &str {
 		&self.id
 	}
@@ -119,18 +140,26 @@ impl PluginLibrary {
 		self.email.as_deref()
 	}
 
+	/// Gets the flags from plugin factory info
 	pub fn get_flags(&self) -> FactoryFlags {
 		self.flags
 	}
 
+	/// Gets the class informations provided by the plugin factory
+	///
+	/// The iteration returns items from the highest available plugin factory interface version
+	/// implemented by the library.
 	pub fn get_class_infos<'a>(&'a self) -> ClassInfoIter<'a> {
 		ClassInfoIter::new(self)
 	}
 
-	pub fn create_plugin(&self, context: IUnknown) -> Result<Plugin, Error> {
+	pub fn create_plugin(&self, context: IUnknown, fx_clsid: &Option<GUID>) -> Result<Plugin, Error> {
 		let raw_context = context.as_raw() as *const IUnknown;
 
-		let component = self.create_component_by_category::<IComponent>(VST_AUDIO_EFFECT_CLASS)?;
+		let component = match fx_clsid {
+			Some(id) => self.create_instance::<IComponent>(id),
+			None => self.create_component_by_category::<IComponent>(VST_AUDIO_EFFECT_CLASS)
+		}?;
 		let hr = unsafe { component.initialize(raw_context) };
 
 		if hr.is_err() {
@@ -146,7 +175,7 @@ impl PluginLibrary {
 						Err(Error::from_hresult("Could not get controller class id", hr))
 					}
 					else {
-						self.create_instance::<IEditController>(&class_id, &IEditController::IID)
+						self.create_instance::<IEditController>(&class_id)
 					}
 				})
 				.and_then(|edit_controller| {
@@ -171,8 +200,8 @@ impl PluginLibrary {
 		let edit_cp : IConnectionPoint = edit_controller.cast()
 			.or_else(|e| Err(Error::from_windows("Failed to get connection point for edit controller", e)))?;
 
-		let comp_proxy : IConnectionPoint = ConnectionProxy::new(comp_cp.clone()).into();
-		let edit_proxy : IConnectionPoint = ConnectionProxy::new(edit_cp.clone()).into();
+		let comp_proxy : IConnectionPoint = ComObject::new(ConnectionProxy::new(comp_cp.clone())).cast().unwrap();
+		let edit_proxy : IConnectionPoint = ComObject::new(ConnectionProxy::new(edit_cp.clone())).cast().unwrap();
 
 		let hr = unsafe { comp_proxy.connect(edit_cp.as_raw() as *const IConnectionPoint) };
 
@@ -251,16 +280,17 @@ impl PluginLibrary {
 
 	fn create_component_by_category<T: windows::core::Interface>(&self, category: &str) -> Result<T, Error> {
 		match self.find_class_info(category)? {
-			Some(class_info) => self.create_instance::<T>(&class_info.cid, &T::IID),
+			Some(class_info) => self.create_instance::<T>(&class_info.cid),
 			None => Err(Error::from_other(&format!("No class for category {}.", category)))
 		}
 	}
 
 	fn find_class_info(&self, category: &str) -> Result<Option<ClassInfo>, Error> {
 		for c in 0..self.count_classes() {
-			let class_info = self.get_class_info(c)?;
-			if class_info.category == category {
-				return Ok(Some(class_info));
+			if let Ok(class_info) = self.get_class_info(c) {
+				if class_info.is_category(category) {
+					return Ok(Some(class_info));
+				}
 			}
 		}
 		Ok(None)
@@ -270,12 +300,12 @@ impl PluginLibrary {
 		self.factory.as_ref().unwrap()
 	}
 
-	fn create_instance<T>(&self, cid: &GUID, iid: &GUID) -> Result<T, Error> {
+	fn create_instance<T: Interface>(&self, cid: &GUID) -> Result<T, Error> {
 		let mut opt_instance : Option<T> = None;
 
 		let hr = unsafe {
 			// about the beauty of type-safety...
-			self.get_factory().createInstance(cid, iid, &mut opt_instance as *mut _ as *mut *mut std::ffi::c_void)
+			self.get_factory().createInstance(cid, &T::IID, &mut opt_instance as *mut _ as *mut *const std::ffi::c_void)
 		};
 
 		if hr.is_err() {
