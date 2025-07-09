@@ -30,19 +30,48 @@ fn iface_from_raw<'a, T: Interface>(raw: *const T) -> Option<T> {
 }
 
 impl IConnectionPoint_Impl for ConnectionProxy_Impl {
-	unsafe fn connect(&self, dst: *const IConnectionPoint) -> HRESULT {
-		if dst == std::ptr::null() {
+	unsafe fn connect(&self, other: *const IConnectionPoint) -> HRESULT {
+		if other == std::ptr::null() {
 			return E_INVALIDARG;
 		}
-		let dst_as_mut_void = dst as *mut std::ffi::c_void;
+		if self.dst.borrow().is_some() {
+			return S_FALSE;
+		}
+
+		let dst_as_mut_void = other as *mut std::ffi::c_void;
 		*self.dst.borrow_mut() = Some(unsafe { IConnectionPoint::from_raw_borrowed(&dst_as_mut_void).unwrap() }.clone());
-		S_OK
+
+		let self_as_iface : InterfaceRef<IConnectionPoint> = self.as_interface_ref();
+		let hr = unsafe { self.src.borrow().connect(self_as_iface.as_raw() as *const IConnectionPoint) };
+
+		if hr.is_err() {
+			*self.dst.borrow_mut() = None;
+		}
+		hr
 	}
 
-	unsafe fn disconnect(&self, _dst: *const IConnectionPoint) -> HRESULT {
-		// TODO: check if current connection is same as dst
-		*self.dst.borrow_mut() = None;
-		S_OK
+	unsafe fn disconnect(&self, other: *const IConnectionPoint) -> HRESULT {
+		if other == std::ptr::null() {
+			return E_INVALIDARG;
+		}
+
+		let hr = match &*self.dst.borrow() {
+			Some(dst) => {
+				if dst.as_raw() as *const IConnectionPoint != other {
+					E_INVALIDARG
+				}
+				else {
+					let self_as_iface : InterfaceRef<IConnectionPoint> = self.as_interface_ref();
+					unsafe { self.src.borrow().disconnect(self_as_iface.as_raw() as *const IConnectionPoint) }
+				}
+			},
+			None => E_INVALIDARG
+		};
+
+		if hr.is_ok() {
+			*self.dst.borrow_mut() = None;
+		}
+		hr
 	}
 
 	unsafe fn notify(&self,msg: *const IMessage) -> HRESULT {
