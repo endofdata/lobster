@@ -24,6 +24,8 @@ mod plugin;
 mod host_application;
 mod connection_proxy;
 mod str_conv;
+mod message;
+mod attrib_list;
 
 pub mod host;
 pub mod error;
@@ -254,7 +256,7 @@ pub unsafe trait IComponent : IPluginBase {
 pub unsafe trait IHostApplication : IUnknown {
 	pub fn getName(&self, name: String128) -> i32;
 
-	pub fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
+	pub fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *const c_void) -> HRESULT;
 }
 
 /// Class factory that any plug-in defines for creating class instances: IPluginFactory
@@ -277,7 +279,7 @@ pub unsafe trait IPluginFactory : IUnknown {
 
 	pub fn getClassInfo(&self, index: i32, classInfo: *mut PClassInfo) -> HRESULT;
 
-	pub fn createInstance(&self, cidString: *const GUID, iidString: *const GUID, ppv: *mut *mut c_void) -> HRESULT;
+	pub fn createInstance(&self, cidString: *const GUID, iidString: *const GUID, ppv: *mut *const c_void) -> HRESULT;
 }
 
 /// Version 2 of class factory supporting PClassInfo2: IPluginFactory2
