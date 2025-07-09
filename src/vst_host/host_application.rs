@@ -36,27 +36,6 @@ impl<'a> IHostApplication_Impl for HostApplication_Impl<'a> {
 	}
 
 	unsafe fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *const std::ffi::c_void) -> HRESULT {
-
-		// TODO: implement creation of IMessage and IAttributeList
-		// if (FUnknownPrivate::iidEqual (cid, IMessage::iid) &&
-		// 	FUnknownPrivate::iidEqual (_iid, IMessage::iid))
-		// {
-		// 	*obj = new HostMessage;
-		// 	return kResultTrue;
-		// }
-		// if (FUnknownPrivate::iidEqual (cid, IAttributeList::iid) &&
-		// 	FUnknownPrivate::iidEqual (_iid, IAttributeList::iid))
-		// {
-		// 	if (auto al = HostAttributeList::make ())
-		// 	{
-		// 		*obj = al.take ();
-		// 		return kResultTrue;
-		// 	}
-		// 	return kOutOfMemory;
-		// }
-		// *obj = nullptr;
-		// return kResultFalse;
-
 		let cid : GUID = unsafe { *cid };
 		let iid : GUID = unsafe { *iid };
 		unsafe { *ppv = std::ptr::null_mut()};
