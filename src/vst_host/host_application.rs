@@ -1,5 +1,9 @@
-use windows::Win32::Foundation::E_NOINTERFACE;
-use windows::core::{implement, GUID, HRESULT};
+use windows::{
+	core::{implement, ComObject, Interface, GUID, HRESULT}, Win32::Foundation::{E_NOINTERFACE, S_OK}
+};
+
+use crate::vst_host::{attrib_list::AttributeList, message::Message};
+use crate::vst_host::{IAttributeList, IMessage};
 use crate::vst_host::{host::Host, IHostApplication_Impl, String128};
 use super::IHostApplication;
 
@@ -31,10 +35,53 @@ impl<'a> IHostApplication_Impl for HostApplication_Impl<'a> {
 		}
 	}
 
-	unsafe fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *mut std::ffi::c_void) -> HRESULT {
-		eprintln!("Request for unsupported instance: class id '{:?}', interface id '{:?}'.", cid, iid);
+	unsafe fn createInstance(&self, cid: *const GUID, iid: *const GUID, ppv: *mut *const std::ffi::c_void) -> HRESULT {
+
+		// TODO: implement creation of IMessage and IAttributeList
+		// if (FUnknownPrivate::iidEqual (cid, IMessage::iid) &&
+		// 	FUnknownPrivate::iidEqual (_iid, IMessage::iid))
+		// {
+		// 	*obj = new HostMessage;
+		// 	return kResultTrue;
+		// }
+		// if (FUnknownPrivate::iidEqual (cid, IAttributeList::iid) &&
+		// 	FUnknownPrivate::iidEqual (_iid, IAttributeList::iid))
+		// {
+		// 	if (auto al = HostAttributeList::make ())
+		// 	{
+		// 		*obj = al.take ();
+		// 		return kResultTrue;
+		// 	}
+		// 	return kOutOfMemory;
+		// }
+		// *obj = nullptr;
+		// return kResultFalse;
+
+		let cid : GUID = unsafe { *cid };
+		let iid : GUID = unsafe { *iid };
 		unsafe { *ppv = std::ptr::null_mut()};
 
-		E_NOINTERFACE
+		if iid == IMessage::IID {
+			if let Ok(message) = ComObject::new(Message::new()).cast::<IMessage>() {
+				unsafe { *ppv = message.into_raw() as *mut std::ffi::c_void };
+				S_OK
+			}
+			else {
+				E_NOINTERFACE
+			}
+		}
+		else if iid == IAttributeList::IID {
+			if let Ok(attrib_list) = ComObject::new(AttributeList::new()).cast::<IAttributeList>() {
+				unsafe { *ppv = attrib_list.into_raw() as *mut std::ffi::c_void };
+				S_OK
+			}
+			else {
+				E_NOINTERFACE
+			}
+		}
+		else {
+			eprintln!("Request for unsupported instance: class id '{:?}', interface id '{:?}'.", cid, iid);
+			E_NOINTERFACE
+		}
 	}
 }
