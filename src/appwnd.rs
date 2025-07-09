@@ -16,7 +16,7 @@ use windows::{
 };
 //use windows_numerics::Vector2;
 
-use crate::{error::Error, vst_host::{host::Host, IEditController, IPlugView}};
+use crate::{error::Error, vst_host::{host::Host, IEditController, IPlugView, VST_AUDIO_EFFECT_CLASS}};
 
 static REGISTER_WINDOW_CLASS: Once = Once::new();
 const WINDOW_CLASS_NAME: PCWSTR = w!("vsthost-rs.Window");
@@ -196,55 +196,67 @@ fn vst_check() -> std::result::Result<(), crate::Error> {
 	//let library_path = "C:\\Program Files\\Common Files\\VST3\\LVCMeter_x64.vst3";
 
 	let vst_id = host.add_plugin_library(library_path)?;
-	let vst = host.get_plugin_library(&vst_id)?;
+	let lib = host.get_plugin_library(&vst_id)?;
 
-	println!("Created VST:\n  Vendor: {}\n  URL: {}\n  EMail: {}\n  Flags: {:?}\n  Class Infos:",
-		vst.get_vendor(), vst.get_url(), vst.get_email(), vst.get_flags());
+	println!("Created VST:\n  Vendor: {:?}\n  URL: {:?}\n  EMail: {:?}\n  Flags: {:?}\n  Class Infos:",
+		lib.get_vendor(), lib.get_url(), lib.get_email(), lib.get_flags());
 
-	for info in vst.get_class_infos() {
-		println!("    {} {} {}: {} - {} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
+	let mut audio_effect_id : Option<GUID> = None;
+
+	for info in lib.get_class_infos() {
+		println!("    {:?} {:?} {:?}: {:?} - {:?} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
+		if let Some(cat) = info.category {
+			if cat == VST_AUDIO_EFFECT_CLASS {
+				audio_effect_id = Some(info.cid)
+			}
+		}
 	}
 
-	if let Ok(plugin) = vst.create_plugin(host.get_application()) {
-		println!("Created plugin");
+	if audio_effect_id.is_none() {
+		eprintln!("No class of category '{}' was found.", VST_AUDIO_EFFECT_CLASS);
+	}
+	else {
 
-		let edit_controller : IEditController = plugin.get_edit_controller()
-			.or_else(|e| Err(Error::from_hresult("failed to get edit controller", e.code())))?;
+		if let Ok(plugin) = lib.create_plugin(host.get_application(), &audio_effect_id) {
+			println!("Created plugin");
 
-		let parameter_count = unsafe { edit_controller.getParameterCount() };
-		println!("  Plugin has {} parameter(s).", parameter_count);
+			let edit_controller : IEditController = plugin.get_edit_controller()
+				.or_else(|e| Err(Error::from_hresult("failed to get edit controller", e.code())))?;
 
-		if let Some(plug_view) = unsafe {
-			let raw_ptr = edit_controller.createView("editor".as_ptr());
+			let parameter_count = unsafe { edit_controller.getParameterCount() };
+			println!("  Plugin has {} parameter(s).", parameter_count);
 
-			if raw_ptr != std::ptr::null() {
-				//let raw_ptr = option.unwrap();
-				let iface : IPlugView = windows_core::Interface::from_raw(raw_ptr as *mut std::ffi::c_void);
-				//let iface = option.unwrap();
-				let _test = iface.canResize().is_ok();
-				Some(iface)
+			if let Some(plug_view) = unsafe {
+				let raw_ptr = edit_controller.createView("editor".as_ptr());
+
+				if raw_ptr != std::ptr::null() {
+					//let raw_ptr = option.unwrap();
+					let iface : IPlugView = windows_core::Interface::from_raw(raw_ptr as *mut std::ffi::c_void);
+					//let iface = option.unwrap();
+					let _test = iface.canResize().is_ok();
+					Some(iface)
+				}
+				else {
+					eprintln!("Cannot create 'editor' view. Method returned null.");
+					None
+				}
+			} {
+				let can_resize = unsafe  { plug_view.canResize() }.is_ok();
+				println!("  PlugView can resize: {}", can_resize);
+			}
+
+			let audio_processor = plugin.create_audio_processor()
+				.or_else(|e| Err(Error::from_hresult("failed to create audio processor", e.code())))?;
+
+			let sample_size = std::mem::size_of::<f32>() as i32;
+			if unsafe { audio_processor.canProcessSampleSize(sample_size).is_err() } {
+				println!("  Plugin cannot process samples of size {} byte(s).", sample_size);
 			}
 			else {
-				eprintln!("Cannot create 'editor' view. Method returned null.");
-				None
+				println!("  Plugin can process samples of size {} byte(s).", sample_size);
 			}
-		} {
-			let can_resize = unsafe  { plug_view.canResize() }.is_ok();
-			println!("  PlugView can resize: {}", can_resize);
-		}
-
-		let audio_processor = plugin.create_audio_processor()
-			.or_else(|e| Err(Error::from_hresult("failed to create audio processor", e.code())))?;
-
-		let sample_size = std::mem::size_of::<f32>() as i32;
-		if unsafe { audio_processor.canProcessSampleSize(sample_size).is_err() } {
-			println!("  Plugin cannot process samples of size {} byte(s).", sample_size);
-		}
-		else {
-			println!("  Plugin can process samples of size {} byte(s).", sample_size);
 		}
 	}
-
 	// drop host before uninitializing COM
 	//drop(host);
 
