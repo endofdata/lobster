@@ -104,16 +104,19 @@ impl PluginLibrary {
 		&self.id
 	}
 
-	pub fn get_vendor(&self) -> &str {
-		&self.vendor
+	/// Gets the vendor's name from plugin factory info
+	pub fn get_vendor(&self) -> Option<&str> {
+		self.vendor.as_deref()
 	}
 
-	pub fn get_url(&self) -> &str {
-		&self.url
+	/// Gets the vendor's URL from plugin factory info
+	pub fn get_url(&self) -> Option<&str> {
+		self.url.as_deref()
 	}
 
-	pub fn get_email(&self) -> &str {
-		&self.email
+	/// Gets the vendor's email from plugin factory info
+	pub fn get_email(&self) -> Option<&str> {
+		self.email.as_deref()
 	}
 
 	pub fn get_flags(&self) -> FactoryFlags {

@@ -44,16 +44,16 @@ impl PFactoryInfo {
 		self.flags = flags;
 	}
 
-	pub fn get_vendor(&self) -> String {
-		StrConv::string_from(&self.vendor, false)
+	pub fn get_vendor(&self) -> Option<String> {
+		StrConv::slice_to_string(&self.vendor)
 	}
 
-	pub fn get_url(&self) -> String {
-		StrConv::string_from(&self.url, false)
+	pub fn get_url(&self) -> Option<String> {
+		StrConv::slice_to_string(&self.url)
 	}
 
-	pub fn get_email(&self) -> String {
-		StrConv::string_from(&self.email, false)
+	pub fn get_email(&self) -> Option<String> {
+		StrConv::slice_to_string(&self.email)
 	}
 
 	pub fn get_flags(&self) -> FactoryFlags {

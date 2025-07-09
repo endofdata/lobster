@@ -145,12 +145,12 @@ pub struct ClassInfo {
 	pub cid: GUID,
 	pub cardinality: ClassCardinality,
 	pub class_flags: u32,
-	pub category: String,
-	pub name: String,
-	pub sub_categories: String,
-	pub vendor: String,
-	pub version: String,
-	pub sdk_version: String
+	pub category: Option<String>,
+	pub name: Option<String>,
+	pub sub_categories: Option<String>,
+	pub vendor: Option<String>,
+	pub version: Option<String>,
+	pub sdk_version: Option<String>
 }
 
 impl ClassInfo {
@@ -159,12 +159,12 @@ impl ClassInfo {
 			cid: src.cid,
 			cardinality: src.cardinality,
 			class_flags: 0,
-			category: StrConv::string_from(&src.category, false),
-			name: StrConv::string_from(&src.name, false),
-			sub_categories: String::new(),
-			vendor: String::new(),
-			version: String::new(),
-			sdk_version: String::new()
+			category: StrConv::slice_to_string(&src.category),
+			name: StrConv::slice_to_string(&src.name),
+			sub_categories: None,
+			vendor: None,
+			version: None,
+			sdk_version: None
 		}
 	}
 
@@ -194,5 +194,9 @@ impl ClassInfo {
 			version: StrConv::slice_w_to_string(&src.version),
 			sdk_version: StrConv::slice_w_to_string(&src.sdk_version)
 		}
+	}
+
+	pub fn is_category(&self, category: &str) -> bool {
+		self.category.as_ref().is_some_and(|c| c == category)
 	}
 }
