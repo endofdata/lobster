@@ -358,3 +358,96 @@ impl Drop for PluginLibrary {
 		self.close().unwrap();
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use windows::Win32::Foundation::E_NOTIMPL;
+	use windows_core::{implement, ComObject, GUID, HRESULT};
+	use crate::vst_host::{str_conv::StrConv, Error, IEditController, IHostApplication, IHostApplication_Impl, IPlugView, String128, STRING_128_SIZE};
+
+use super::PluginLibrary;
+
+	const LIBRARY_PATH : &str = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
+
+	#[implement(IHostApplication)]
+	struct DummyHost {
+		name: String
+	}
+
+	impl DummyHost {
+		pub fn new(name: &str) -> Self {
+			Self { name: name.into() }
+		}
+	}
+
+	impl IHostApplication_Impl for DummyHost_Impl {
+		unsafe fn getName(&self, name: String128) -> i32 {
+			StrConv::str_to_w_str(&self.name, name, STRING_128_SIZE, true) as i32
+		}
+
+		unsafe fn createInstance(&self, _cid: *const GUID, _iid: *const GUID, _ppv: *mut *const std::ffi::c_void) -> HRESULT {
+			E_NOTIMPL
+		}
+	}
+
+	#[test]
+	fn create_plugin() {
+		println!("Attempting to create instance of '{}'", LIBRARY_PATH);
+
+		let maybe_lib = PluginLibrary::load(LIBRARY_PATH);
+
+		assert!(maybe_lib.is_ok(),
+			"Plugin library should load successfully");
+
+		let lib = maybe_lib.unwrap();
+
+		println!("Created VST:\n  Vendor: {:?}\n  URL: {:?}\n  EMail: {:?}\n  Flags: {:?}\n  Class Infos:",
+			lib.get_vendor(), lib.get_url(), lib.get_email(), lib.get_flags());
+
+		for info in lib.get_class_infos() {
+			println!("    {:?} {:?} {:?}: {:?} - {:?} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
+		}
+
+		let dummy_context = ComObject::new(DummyHost::new("Manfred"));
+
+		if let Ok(plugin) = lib.create_plugin(dummy_context.cast().unwrap(), &None) {
+			println!("Created plugin");
+
+			let edit_controller : IEditController = plugin.get_edit_controller()
+				.or_else(|e| Err(Error::from_hresult("failed to get edit controller", e.code()))).unwrap();
+
+			let parameter_count = unsafe { edit_controller.getParameterCount() };
+			println!("  Plugin has {} parameter(s).", parameter_count);
+
+			if let Some(plug_view) = unsafe {
+				let raw_ptr = edit_controller.createView("editor".as_ptr());
+
+				if raw_ptr != std::ptr::null() {
+					//let raw_ptr = option.unwrap();
+					let iface : IPlugView = windows_core::Interface::from_raw(raw_ptr as *mut std::ffi::c_void);
+					//let iface = option.unwrap();
+					let _test = iface.canResize().is_ok();
+					Some(iface)
+				}
+				else {
+					eprintln!("Cannot create 'editor' view. Method returned null.");
+					None
+				}
+			} {
+				let can_resize = unsafe  { plug_view.canResize() }.is_ok();
+				println!("  PlugView can resize: {}", can_resize);
+			}
+
+			let audio_processor = plugin.create_audio_processor()
+				.or_else(|e| Err(Error::from_hresult("failed to create audio processor", e.code()))).unwrap();
+
+			let sample_size = std::mem::size_of::<f32>() as i32;
+			if unsafe { audio_processor.canProcessSampleSize(sample_size).is_err() } {
+				println!("  Plugin cannot process samples of size {} byte(s).", sample_size);
+			}
+			else {
+				println!("  Plugin can process samples of size {} byte(s).", sample_size);
+			}
+		}
+	}
+}
