@@ -34,8 +34,8 @@ impl PClassInfo {
 	pub fn init(&mut self, cid: &GUID, cardinality: ClassCardinality, category: &str, name: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
-		StrConv::utf8_copy(category, &mut self.category);
-		StrConv::utf8_copy(name, &mut self.name);
+		StrConv::str_to_bytes(category, &mut self.category, true);
+		StrConv::str_to_bytes(name, &mut self.name, true);
 	}
 }
 
@@ -78,13 +78,13 @@ impl PClassInfo2 {
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
-		StrConv::utf8_copy(category, &mut self.category);
-		StrConv::utf8_copy(name, &mut self.name);
+		StrConv::str_to_bytes(category, &mut self.category, true);
+		StrConv::str_to_bytes(name, &mut self.name, true);
 		self.class_flags = class_flags;
-		StrConv::utf8_copy(sub_categories, &mut self.sub_categories);
-		StrConv::utf8_copy(vendor, &mut self.vendor);
-		StrConv::utf8_copy(version, &mut self.version);
-		StrConv::utf8_copy(sdk_version, &mut self.sdk_version);
+		StrConv::str_to_bytes(sub_categories, &mut self.sub_categories, true);
+		StrConv::str_to_bytes(vendor, &mut self.vendor, true);
+		StrConv::str_to_bytes(version, &mut self.version, true);
+		StrConv::str_to_bytes(sdk_version, &mut self.sdk_version, true);
 	}
 }
 
@@ -128,13 +128,13 @@ impl PClassInfoW {
 		class_flags: u32, sub_categories: &str, vendor: &str, version: &str, sdk_version: &str) {
 		self.cid = *cid;
 		self.cardinality = cardinality;
-		StrConv::utf8_copy(category, &mut self.category);
-		StrConv::utf16_copy_w(name, &mut self.name);
+		StrConv::str_to_bytes(category, &mut self.category, true);
+		StrConv::str_to_slice_w(name, &mut self.name, true);
 		self.class_flags = class_flags;
-		StrConv::utf8_copy(sub_categories, &mut self.sub_categories);
-		StrConv::utf16_copy_w(vendor, &mut self.vendor);
-		StrConv::utf16_copy_w(version, &mut self.version);
-		StrConv::utf16_copy_w(sdk_version, &mut self.sdk_version);
+		StrConv::str_to_bytes(sub_categories, &mut self.sub_categories, true);
+		StrConv::str_to_slice_w(vendor, &mut self.vendor, true);
+		StrConv::str_to_slice_w(version, &mut self.version, true);
+		StrConv::str_to_slice_w(sdk_version, &mut self.sdk_version, true);
 	}
 }
 
@@ -173,12 +173,12 @@ impl ClassInfo {
 			cid: src.cid,
 			cardinality: src.cardinality,
 			class_flags: src.class_flags,
-			category: StrConv::string_from(&src.category, false),
-			name: StrConv::string_from(&src.name, false),
-			sub_categories: StrConv::string_from(&src.sub_categories, false),
-			vendor: StrConv::string_from(&src.vendor, false),
-			version: StrConv::string_from(&src.version, false),
-			sdk_version: StrConv::string_from(&src.sdk_version, false)
+			category: StrConv::slice_to_string(&src.category),
+			name: StrConv::slice_to_string(&src.name),
+			sub_categories: StrConv::slice_to_string(&src.sub_categories),
+			vendor: StrConv::slice_to_string(&src.vendor),
+			version: StrConv::slice_to_string(&src.version),
+			sdk_version: StrConv::slice_to_string(&src.sdk_version)
 		}
 	}
 
@@ -187,12 +187,12 @@ impl ClassInfo {
 			cid: src.cid,
 			cardinality: src.cardinality,
 			class_flags: src.class_flags,
-			category: StrConv::string_from(&src.category, false),
-			name: StrConv::string_from_w(&src.name),
-			sub_categories: StrConv::string_from(&src.sub_categories, false),
-			vendor: StrConv::string_from_w(&src.vendor),
-			version: StrConv::string_from_w(&src.version),
-			sdk_version: StrConv::string_from_w(&src.sdk_version)
+			category: StrConv::slice_to_string(&src.category),
+			name: StrConv::slice_w_to_string(&src.name),
+			sub_categories: StrConv::slice_to_string(&src.sub_categories),
+			vendor: StrConv::slice_w_to_string(&src.vendor),
+			version: StrConv::slice_w_to_string(&src.version),
+			sdk_version: StrConv::slice_w_to_string(&src.sdk_version)
 		}
 	}
 }

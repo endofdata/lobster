@@ -32,14 +32,14 @@ impl PFactoryInfo {
 
 	pub fn init(&mut self, vendor: &str, url: &str, email: &str, flags: FactoryFlags) {
 		if flags.has_flag(FactoryFlags::Unicode) {
-			StrConv::utf16_copy(vendor, &mut self.vendor);
-			StrConv::utf16_copy(url, &mut self.url);
-			StrConv::utf16_copy(email, &mut self.email);
+			StrConv::str_to_bytes(vendor, &mut self.vendor, true);
+			StrConv::str_to_bytes(url, &mut self.url, true);
+			StrConv::str_to_bytes(email, &mut self.email, true);
 		}
 		else {
-			StrConv::utf8_copy(vendor, &mut self.vendor);
-			StrConv::utf8_copy(url, &mut self.url);
-			StrConv::utf8_copy(email, &mut self.email);
+			StrConv::str_to_bytes(vendor, &mut self.vendor, true);
+			StrConv::str_to_bytes(url, &mut self.url, true);
+			StrConv::str_to_bytes(email, &mut self.email, true);
 		}
 		self.flags = flags;
 	}

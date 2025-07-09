@@ -5,27 +5,36 @@ pub struct StrConv {
 }
 
 impl StrConv {
-	pub fn utf16_copy(value: &str, target: &mut [u8]) -> usize {
+	/// Write the utf-16 encoded `value` codepoints as little-endian byte pairs to `target`
+	///
+	/// If `zero_term` is `true` the `target` is always terminated with two `0u8`.
+	pub fn str_to_bytes_w(value: &str, target: &mut [u8], zero_term: bool) -> usize {
 		let mut pos = 0;
-		for c in value.encode_utf16().take((target.len() / 2) - 1) {
-			target[pos] = (c & 0xFFu16) as u8;
-			target[pos + 1] = ((c >> 8) & 0xFFu16) as u8;
-			pos += 2;
+		let max = (target.len() - if zero_term { 1 } else {0}) / 2;
+		if max > 0 {
+			for c in value.encode_utf16().take(max) {
+				target[pos] = (c & 0xFFu16) as u8;
+				target[pos + 1] = ((c >> 8) & 0xFFu16) as u8;
+				pos += 2;
+			}
 		}
-		target[pos] = 0;
-		target[pos + 1] = 0;
+		if zero_term {
+			target[pos] = 0;
+			target[pos + 1] = 0;
+		}
 		return pos;
 	}
 
-	pub fn utf8_copy(value: &str, target: &mut [u8]) -> usize {
-		match target.len() {
-			0 => 0,
-			1 => {
-				target[0] = 0;
+	/// Write `value` as utf-8 bytes to `target`
+	///
+	/// If `zero_term` is `true` target is always terminated with a single `0u8`.
+	pub fn str_to_bytes(value: &str, target: &mut [u8], zero_term: bool) -> usize {
+		let len = match target.len() - if zero_term { 1 } else  { 0 } {
+			0 => {
 				0
 			},
 			len => {
-				let mut bndry = usize::min(len - 1, value.len());
+				let mut bndry = usize::min(len, value.len());
 				while bndry > 0 && !value.is_char_boundary(bndry) {
 					bndry -= 1;
 				}
@@ -33,74 +42,94 @@ impl StrConv {
 					for (pos, c) in value.bytes().take(bndry).enumerate() {
 						target[pos] = c;
 					}
-					target[bndry] = 0;
 					bndry
 				}
 				else {
 					0
 				}
 			}
-		}
-	}
-
-	pub fn utf16_copy_w(value: &str, target: &mut [u16]) -> usize {
-		let mut pos = 0;
-		for c in value.encode_utf16().take(target.len() - 1) {
-			target[pos] = c;
-			pos += 1;
-		}
-		target[pos] = 0;
-		return pos;
-	}
-
-	pub fn string_from(value: &[u8], is_utf16: bool) -> String {
-		if is_utf16 {
-			let mut pos = 0;
-			let max = value.len();
-			let mut conv: Vec<u16> = vec![0; max / 2];
-			while pos < max - 1 {
-				let codepoint = value[pos] as u16 | ((value[pos + 1] as u16) << 8);
-				conv.push(codepoint);
-				if codepoint == 0 {
-					break;
-				}
-				pos += 2;
-			}
-			String::from_utf16(&conv).unwrap()
-		} else {
-			// TODO: Is THIS really required?!? Only to get all bytes before the zero and forward it?!?
-			String::from_utf8(value.iter().map(|b| *b).take_while(|b| *b != 0u8).collect()).unwrap()
-		}
-	}
-
-	pub fn w_from_str(value: &str, buffer: &mut [u16]) -> usize {
-		let mut len = 0;
-
-		for (idx, c) in value
-			.encode_utf16()
-			.take(buffer.len() - 1)
-			.enumerate() {
-			len += 1;
-			buffer[idx] = c;
+		};
+		if zero_term {
+			target[len] = 0;
 		}
 		len
 	}
 
-	#[allow(dead_code)]
-	pub fn string_from_w(value: &[u16]) -> String {
-		let vec: Vec<u16> = value
-			.iter()
-			.map(|w| *w)
-			.take_while(|w| *w != 0u16)
-			.collect();
-		String::from_utf16(&vec).unwrap()
+	/// Creates a [String] from two-byte pairs, each read as little-endian utf-16 codepoint
+	///
+	/// Stops at the first byte pair of two zero-bytes or the end of `value`
+	pub fn bytes_w_to_string(value: &[u8]) -> Option<String> {
+		let max = value.chunks(2).count();
+		let mut conv = Vec::with_capacity(max);
+
+		for pair in value.chunks(2).take(max) {
+			let codepoint = pair[0] as u16 | ((pair[1] as u16) << 8);
+			if codepoint == 0 {
+				break;
+			}
+			conv.push(codepoint);
+		}
+		String::from_utf16(&conv).ok()
 	}
 
+	/// Attempts to create a [String] from a portion of `value` up to the first `0u16`.
+	///
+	/// Returns `None` if `value` does not contain valid utf-16 encoded data
+	#[allow(dead_code)]
+	pub fn slice_w_to_string(value: &[u16]) -> Option<String> {
+		String::from_utf16(value
+			.iter()
+			.take_while(|&&w| w != 0u16)
+			.cloned()
+			.collect::<Vec<u16>>()
+			.as_slice())
+		.ok()
+	}
+
+	/// Attempts to create a [String] from a portion of `value` up to the first `0u8`.
+	///
+	/// Returns `None` if `value` does not contain valid utf-8 encoded data
+	pub fn slice_to_string(value: &[u8]) -> Option<String> {
+		String::from_utf8(value
+			.iter()
+			.take_while(|&&b| b != 0u8)
+			.cloned()
+			.collect())
+		.ok()
+	}
+
+	/// Write the utf-16 encoded `value` codepoints as little-endian byte pairs to `target`
+	///
+	/// If `zero_term` is `true` the `target` is always terminated with `0u16`.
+	pub fn str_to_w_str(value: &str, target: *mut u16, max: usize, zero_term: bool) -> usize {
+		if target != std::ptr::null_mut() {
+			let utf_16 = value.encode_utf16();
+			let count = usize::min(value.chars().count(), max - if zero_term { 1 } else { 0 });
+			let mut pos = target;
+
+			for c in utf_16.take(count) {
+				unsafe {
+					*pos = c;
+					pos = pos.add(1);
+				}
+			}
+			if zero_term {
+				unsafe { *pos = 0u16 };
+			}
+			count
+		}
+		else {
+			0
+		}
+	}
+
+	/// Formats a `guid` as [String] in a format as expected by VST SDK
 	pub fn as_fid_string(guid: &windows::core::GUID) -> String {
 		// TODO: Check format (was: guid.to_string())
 		format!("{:?}", guid)
 	}
 
+	/// Compares two raw, zero-terminated C-style strings
 	pub fn c_str_cmp(a: *const u8, b: *const u8) -> isize {
 		unsafe {
 			let mut x = a;
@@ -126,6 +155,7 @@ impl StrConv {
 		}
 	}
 
+	/// Creates a vector that holds the `value`'s bytes terminated by a `0u8`
 	pub fn str_to_c_str_vec(value: &str) -> Vec<u8> {
 		let len = value.len();
 		let mut buffer = vec![0u8; len + 1];
@@ -133,60 +163,80 @@ impl StrConv {
 		buffer
 	}
 
-	pub fn c_str_to_vec(value: *const u8) -> Vec<u8> {
+	/// Creates a vector from the bytes starting at `value` up to and optionally including the terminating `0u8`
+	pub fn c_str_to_vec(value: *const u8, zero_term: bool) -> Vec<u8> {
 		let len = Self::c_str_len(value);
-		let mut buffer = vec![0u8; len + 1];
+		let mut buffer = vec![0u8; len + if zero_term { 1 } else { 0 }];
 		unsafe { value.copy_to(buffer.as_mut_ptr(), len) };
 		buffer
 	}
 
-	pub fn c_str_copy(src: *const u8, dst: &mut [u8]) -> usize {
-		let mut pos = src;
-		let mut max = dst.len() - 1;
+	/// Copies the bytes starting at `value` up to and optionally including the terminating `0u8` to `target`
+	pub fn c_str_to_slice(value: *const u8, target: &mut [u8], zero_term: bool) -> usize {
+		let mut pos = value;
+		let mut max = target.len() - if zero_term { 1 } else { 0 };
 
 		for i in 0..max {
-			dst[i] = unsafe {
+			target[i] = unsafe {
 				let c = *pos;
 				pos = pos.add(1);
 				c
 			};
-			if dst[i] == 0u8 {
+			if target[i] == 0u8 {
 				max = i;
 				break;
 			}
 		}
-		dst[max] = 0u8;
-
+		if zero_term {
+			target[max] = 0u8;
+		}
 		max
 	}
 
+	/// Gets the number of bytes starting at `value` up to the first `0u8`
 	pub fn c_str_len(value: *const u8) -> usize {
 		let cstr = unsafe { CStr::from_ptr(value as *const std::ffi::c_char) };
 		cstr.count_bytes()
 	}
 
+	/// Creates a [String] from the bytes starting at `value` up to the first `0u8`.
 	pub fn c_str_to_string(value: *const u8) -> String {
 		let cstr = unsafe { CStr::from_ptr(value as *const std::ffi::c_char) };
 		cstr.to_string_lossy().into_owned()
 	}
 
-	pub fn w_str_copy(src: *const u16, dst: &mut [u16]) -> usize {
+	pub fn str_to_slice_w(value: &str, target: &mut [u16], zero_term: bool) -> usize {
+		let mut pos = 0;
+		let max = target.len() - if zero_term { 1 } else { 0 };
+
+		for c in value.encode_utf16().take(max) {
+			target[pos] = c;
+			pos += 1;
+		}
+		if zero_term {
+			target[pos] = 0;
+		}
+		return pos;
+	}
+
+	pub fn w_str_to_slice_w(src: *const u16, dst: &mut [u16], zero_term: bool) -> usize {
 		let mut pos = src;
-		let mut max = dst.len() - 1;
+		let mut max = dst.len() - if zero_term { 1 } else { 0};
 
 		for i in 0..max {
+			if dst[i] == 0u16 {
+				max = i;
+				break;
+			}
 			dst[i] = unsafe {
 				let c = *pos;
 				pos = pos.add(1);
 				c
 			};
-			if dst[i] == 0u16 {
-				max = i;
-				break;
-			}
 		}
-		dst[max] = 0u16;
-
+		if zero_term {
+			dst[max] = 0u16;
+		}
 		max
 	}
 
@@ -223,7 +273,7 @@ mod test {
 	pub fn can_copy_utf16() {
 		let value = "Thornton Wilder";
 		let mut target = [0u8; 32];
-		let byte_count = StrConv::utf16_copy(value, &mut target);
+		let byte_count = StrConv::str_to_bytes(value, &mut target, false);
 
 		assert_eq!(byte_count & 1, 0, "byte count should be an even number");
 
@@ -233,7 +283,7 @@ mod test {
 		assert_eq!(result, value, "copying as utf16 should be lossless");
 
 		let mut odd_target = [0u8; 7];
-		let byte_count = StrConv::utf16_copy("123", &mut odd_target);
+		let byte_count = StrConv::str_to_bytes("123", &mut odd_target, false);
 
 		assert_eq!(byte_count, 4, "utf16_copy should use only even number of target bytes");
 	}
@@ -251,7 +301,7 @@ mod test {
 			// this is Tulu for 'What do we have here?'
 			("ನಮಕ್ ಮುಲ್ಪ ದಾದ ಉಂಡು?", "ನಮಕ್ "),
 			("", "")] {
-			let copied = StrConv::utf8_copy(value, &mut target);
+			let copied = StrConv::str_to_bytes(value, &mut target, false);
 			let result = String::from_utf8_lossy(&target[0..copied]);
 
 			assert_eq!(result, expect);
