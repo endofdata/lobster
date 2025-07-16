@@ -6,6 +6,7 @@ use crate::vst_host::factory_flags::FactoryFlags;
 use crate::vst_host::pclass_info::{ClassInfo, PClassInfo, PClassInfo2, PClassInfoW};
 use crate::vst_host::pfactory_info::PFactoryInfo;
 use crate::vst_host::plugin::Plugin;
+use crate::vst_host::thread_check::ThreadCheck;
 use crate::vst_host::{IConnectionPoint, IEditController, IPluginFactory2, IPluginFactory3, VST_AUDIO_EFFECT_CLASS};
 
 use super::{IPluginFactory, IComponent};
@@ -153,8 +154,8 @@ impl PluginLibrary {
 		ClassInfoIter::new(self)
 	}
 
-	pub fn create_plugin(&self, context: IUnknown, fx_clsid: &Option<GUID>) -> Result<Plugin, Error> {
-		let raw_context = context.as_raw() as *const IUnknown;
+	pub fn create_plugin(&self, context: IUnknown, fx_clsid: &Option<GUID>, thread_check: ThreadCheck) -> Result<Plugin, Error> {
+		let raw_context : *const IUnknown = unsafe { std::mem::transmute_copy(&context) };
 
 		let component = match fx_clsid {
 			Some(id) => self.create_instance::<IComponent>(id),
@@ -185,40 +186,13 @@ impl PluginLibrary {
 						Err(Error::from_hresult("Could not initialize IEditController", hr))
 					}
 					else {
-						Self::connect_components(&component, &edit_controller)?;
-						Ok(Plugin::new(component, edit_controller))
+						Plugin::new(component, edit_controller, thread_check)
 					}
 				})
 		}
 	}
 
-	fn connect_components(component: &IComponent, edit_controller: &IEditController) -> Result<(), Error>
-	{
-		let comp_cp : IConnectionPoint = component.cast()
-			.or_else(|e| Err(Error::from_windows("Failed to get connection point for component", e)))?;
 
-		let edit_cp : IConnectionPoint = edit_controller.cast()
-			.or_else(|e| Err(Error::from_windows("Failed to get connection point for edit controller", e)))?;
-
-		let comp_proxy : IConnectionPoint = ComObject::new(ConnectionProxy::new(comp_cp.clone())).cast().unwrap();
-		let edit_proxy : IConnectionPoint = ComObject::new(ConnectionProxy::new(edit_cp.clone())).cast().unwrap();
-
-		let hr = unsafe { comp_proxy.connect(edit_cp.as_raw() as *const IConnectionPoint) };
-
-		if hr.is_err() {
-			Err(Error::from_hresult("Failed to connect edit controller to component proxy", hr))
-		}
-		else {
-			let hr = unsafe { edit_proxy.connect (comp_cp.as_raw() as *const IConnectionPoint) };
-
-			if hr.is_err() {
-				Err(Error::from_hresult("Failed to connect component to edit controller proxy", hr))
-			}
-			else {
-				Ok(())
-			}
-		}
-	}
 
 	fn count_classes(&self) -> usize {
 		unsafe {
@@ -365,7 +339,7 @@ mod test {
 	use windows_core::{implement, ComObject, GUID, HRESULT};
 	use crate::vst_host::{str_conv::StrConv, Error, IEditController, IHostApplication, IHostApplication_Impl, IPlugView, String128, STRING_128_SIZE};
 
-use super::PluginLibrary;
+	use super::PluginLibrary;
 
 	const LIBRARY_PATH : &str = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 
@@ -387,67 +361,6 @@ use super::PluginLibrary;
 
 		unsafe fn createInstance(&self, _cid: *const GUID, _iid: *const GUID, _ppv: *mut *const std::ffi::c_void) -> HRESULT {
 			E_NOTIMPL
-		}
-	}
-
-	#[test]
-	fn create_plugin() {
-		println!("Attempting to create instance of '{}'", LIBRARY_PATH);
-
-		let maybe_lib = PluginLibrary::load(LIBRARY_PATH);
-
-		assert!(maybe_lib.is_ok(),
-			"Plugin library should load successfully");
-
-		let lib = maybe_lib.unwrap();
-
-		println!("Created VST:\n  Vendor: {:?}\n  URL: {:?}\n  EMail: {:?}\n  Flags: {:?}\n  Class Infos:",
-			lib.get_vendor(), lib.get_url(), lib.get_email(), lib.get_flags());
-
-		for info in lib.get_class_infos() {
-			println!("    {:?} {:?} {:?}: {:?} - {:?} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
-		}
-
-		let dummy_context = ComObject::new(DummyHost::new("Manfred"));
-
-		if let Ok(plugin) = lib.create_plugin(dummy_context.cast().unwrap(), &None) {
-			println!("Created plugin");
-
-			let edit_controller : IEditController = plugin.get_edit_controller()
-				.or_else(|e| Err(Error::from_hresult("failed to get edit controller", e.code()))).unwrap();
-
-			let parameter_count = unsafe { edit_controller.getParameterCount() };
-			println!("  Plugin has {} parameter(s).", parameter_count);
-
-			if let Some(plug_view) = unsafe {
-				let raw_ptr = edit_controller.createView("editor".as_ptr());
-
-				if raw_ptr != std::ptr::null() {
-					//let raw_ptr = option.unwrap();
-					let iface : IPlugView = windows_core::Interface::from_raw(raw_ptr as *mut std::ffi::c_void);
-					//let iface = option.unwrap();
-					let _test = iface.canResize().is_ok();
-					Some(iface)
-				}
-				else {
-					eprintln!("Cannot create 'editor' view. Method returned null.");
-					None
-				}
-			} {
-				let can_resize = unsafe  { plug_view.canResize() }.is_ok();
-				println!("  PlugView can resize: {}", can_resize);
-			}
-
-			let audio_processor = plugin.create_audio_processor()
-				.or_else(|e| Err(Error::from_hresult("failed to create audio processor", e.code()))).unwrap();
-
-			let sample_size = std::mem::size_of::<f32>() as i32;
-			if unsafe { audio_processor.canProcessSampleSize(sample_size).is_err() } {
-				println!("  Plugin cannot process samples of size {} byte(s).", sample_size);
-			}
-			else {
-				println!("  Plugin can process samples of size {} byte(s).", sample_size);
-			}
 		}
 	}
 }
