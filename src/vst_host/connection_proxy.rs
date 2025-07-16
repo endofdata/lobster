@@ -1,19 +1,29 @@
 use std::cell::RefCell;
 
-use crate::vst_host::{IConnectionPoint, IConnectionPoint_Impl, IMessage};
-use windows::Win32::Foundation::{E_INVALIDARG, S_FALSE};
-use windows_core::{implement, ComObjectInterface, Interface, InterfaceRef, HRESULT};
+use crate::vst_host::{thread_check::ThreadCheck, Error, IConnectionPoint, IConnectionPoint_Impl, IMessage};
+use windows::Win32::Foundation::{E_FAIL, E_INVALIDARG, S_FALSE};
+use windows_core::{implement, AsImpl, ComObjectInterface, Interface, InterfaceRef, HRESULT};
 
 #[implement(IConnectionPoint)]
 pub struct ConnectionProxy
 {
 	src: RefCell<IConnectionPoint>,
 	dst: RefCell<Option<IConnectionPoint>>,
+	thread_check: ThreadCheck,
 }
 
 impl ConnectionProxy {
-	pub fn new(src: IConnectionPoint) -> ConnectionProxy {
-		ConnectionProxy { src: RefCell::new(src), dst: RefCell::new(None) }
+	pub fn new(src: IConnectionPoint, thread_check: ThreadCheck) -> ConnectionProxy {
+		println!("New connection proxy");
+		ConnectionProxy { src: RefCell::new(src), dst: RefCell::new(None), thread_check }
+	}
+
+	pub fn get_src(&self) -> IConnectionPoint {
+		self.src.borrow().clone()
+	}
+
+	pub fn get_dst(&self) -> Option<IConnectionPoint> {
+		self.dst.borrow().clone()
 	}
 }
 
@@ -42,11 +52,12 @@ impl IConnectionPoint_Impl for ConnectionProxy_Impl {
 		*self.dst.borrow_mut() = Some(unsafe { IConnectionPoint::from_raw_borrowed(&dst_as_mut_void).unwrap() }.clone());
 
 		let self_as_iface : InterfaceRef<IConnectionPoint> = self.as_interface_ref();
-		let hr = unsafe { self.src.borrow().connect(self_as_iface.as_raw() as *const IConnectionPoint) };
+		let hr = unsafe { self.src.borrow().connect(std::mem::transmute_copy(&self_as_iface)) };
 
 		if hr.is_err() {
 			*self.dst.borrow_mut() = None;
 		}
+
 		hr
 	}
 
@@ -57,12 +68,12 @@ impl IConnectionPoint_Impl for ConnectionProxy_Impl {
 
 		let hr = match &*self.dst.borrow() {
 			Some(dst) => {
-				if dst.as_raw() as *const IConnectionPoint != other {
+				if other != unsafe { std::mem::transmute_copy(dst) } {
 					E_INVALIDARG
 				}
 				else {
 					let self_as_iface : InterfaceRef<IConnectionPoint> = self.as_interface_ref();
-					unsafe { self.src.borrow().disconnect(self_as_iface.as_raw() as *const IConnectionPoint) }
+					unsafe { self.src.borrow().disconnect(std::mem::transmute_copy(&self_as_iface)) }
 				}
 			},
 			None => E_INVALIDARG
@@ -75,11 +86,12 @@ impl IConnectionPoint_Impl for ConnectionProxy_Impl {
 	}
 
 	unsafe fn notify(&self,msg: *const IMessage) -> HRESULT {
-		// TODO: ignore message if not in main UI thread
-		match self.dst.borrow().as_ref() {
-			Some(dst) => unsafe { dst.notify(msg) },
-			_ => S_FALSE
-		}
+		self.thread_check.with_expected(|| {
+			match self.dst.borrow().as_ref() {
+				Some(dst) => unsafe { dst.notify(msg) },
+				_ => S_FALSE
+			}
+		}).unwrap_or(S_FALSE)
 	}
 }
 
@@ -89,12 +101,13 @@ mod test {
 
 	use windows::{
 		Win32::Foundation::{E_FAIL, E_INVALIDARG, S_OK},
-		core::{implement, Interface, HRESULT, w, ComObject}
+		core::{implement, Interface, InterfaceRef, HRESULT, w, ComObject}
 	};
 
 	use super::{
 		ConnectionProxy,
 		super::{
+			thread_check::ThreadCheck,
 			message::Message,
 			str_conv::StrConv,
 			AttrID, IAttributeList, IConnectionPoint, IConnectionPoint_Impl, IMessage,
@@ -113,6 +126,7 @@ mod test {
 
 	impl ConnectionPoint {
 		fn new(name: &str) -> ConnectionPoint {
+			println!("New connection point '{}'", name);
 			ConnectionPoint { name: name.into(), dsts: RefCell::new(Vec::<IConnectionPoint>::new()) }
 		}
 	}
@@ -200,13 +214,13 @@ mod test {
 
 	fn send_test_msg(to: &IConnectionPoint) {
 		let msg : IMessage = ComObject::new(Message::with_id("gulliver")).cast().unwrap();
-		let raw_attribs = unsafe { msg.getAttributes() as *mut std::ffi::c_void };
+		let raw_attribs : *mut std::ffi::c_void = unsafe { std::mem::transmute_copy(&msg.getAttributes()) };
 		let attribs : &IAttributeList = unsafe { IAttributeList::from_raw_borrowed(&raw_attribs).unwrap() };
 
 		assert!(unsafe { attribs.setString(TEST_ATTR_ID, w!("is still travelling").as_ptr()) }.is_ok(),
 			"adding test message attribute with IAttribList::setString() should be successful");
 
-		assert!(unsafe { to.notify(msg.as_raw() as *const IMessage) }.is_ok(),
+		assert!(unsafe { to.notify(std::mem::transmute_copy(&msg)) }.is_ok(),
 			"source should successful send notification.");
 	}
 
@@ -216,20 +230,35 @@ mod test {
 		let src : IConnectionPoint = ComObject::new(ConnectionPoint::new("source")).cast().unwrap();
 		let dst : IConnectionPoint = ComObject::new(ConnectionPoint::new("destination")).cast().unwrap();
 
-		assert!(unsafe { src.connect(dst.as_raw() as *const IConnectionPoint) }.is_ok(),
+		assert!(unsafe { src.connect(std::mem::transmute_copy(&dst)) }.is_ok(),
 			"source should accept connection to destination");
 
 		send_test_msg(&src);
 
-		assert!(unsafe { src.disconnect(dst.as_raw() as *const IConnectionPoint) }.is_ok(),
+		assert!(unsafe { src.disconnect(std::mem::transmute_copy(&dst)) }.is_ok(),
 			"source should successfully disconnect from destination");
 	}
 
 	#[test]
 	fn connect_proxies() {
-		let test_point = ConnectionPoint::new("test");
-		let proxy = ConnectionProxy::new(test_point.into());
+		println!("begin scope");
+		{
+			let cp_src = ComObject::new(ConnectionPoint::new("test-src"));
+			let cp_dst = ComObject::new(ConnectionPoint::new("test-dst"));
+			let proxy = ComObject::new(ConnectionProxy::new(cp_src.into_interface(), ThreadCheck::for_current_thread()));
+			let cp_proxy : InterfaceRef<IConnectionPoint> = proxy.as_interface();
 
-		send_test_msg(&*proxy.src.borrow());
+			let dst_raw: IConnectionPoint = cp_dst.cast::<IConnectionPoint>().unwrap();
+
+			assert!(unsafe { cp_proxy.connect(std::mem::transmute_copy(&dst_raw)) }.is_ok(),
+				"connection proxy should accept conntection to destination");
+
+			send_test_msg(&cp_proxy);
+
+			// IMPORTANT: current implementation leaks memory if not explicitly disconnected!
+			assert!(unsafe { cp_proxy.disconnect(std::mem::transmute_copy(&dst_raw)) }.is_ok(),
+				"connection proxy should disconnect from connected destination");
+		}
+		println!("scope terminated");
 	}
 }

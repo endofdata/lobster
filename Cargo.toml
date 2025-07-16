@@ -17,6 +17,7 @@ windows-future = "0.2.1"
 version = "0.61.1"
 features = [
 	"Win32_System_Com",
+	"Win32_System_Threading",
     "UI_Composition_Desktop",
     "Win32_System_WinRT_Composition",
 	"Win32_UI_WindowsAndMessaging",
