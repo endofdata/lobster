@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use windows::core::{implement, Interface, ComObject};
+use windows::core::{implement, ComObject};
 
 use super::{attrib_list::AttributeList, str_conv::StrConv, FIDString, IAttributeList, IMessage, IMessage_Impl};
 
@@ -13,6 +13,7 @@ pub struct Message {
 
 impl Message {
 	pub fn new() -> Self {
+		println!("New message");
 		Self {
 			id: RefCell::new(None),
 			attribs: ComObject::new(AttributeList::new()).cast()
@@ -21,6 +22,7 @@ impl Message {
 	}
 
 	pub fn with_id(id: &str) -> Self {
+		println!("New message with id '{}'", id);
 		Self {
 			id: RefCell::new(Some(StrConv::str_to_c_str_vec(id))),
 			attribs: ComObject::new(AttributeList::new()).cast()
@@ -56,7 +58,7 @@ impl IMessage_Impl for Message_Impl {
 	}
 
 	unsafe fn getAttributes(&self) ->  *const IAttributeList {
-		self.attribs.as_raw() as *const IAttributeList
+		unsafe {std::mem::transmute_copy(&self.attribs) }
 	}
 }
 

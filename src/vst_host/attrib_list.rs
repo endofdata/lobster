@@ -56,6 +56,7 @@ pub struct AttributeList {
 
 impl AttributeList {
 	pub fn new() -> Self {
+		println!("New attribute list");
 		Self {
 			values: RefCell::new(HashMap::<AttrKey, AttrValue>::new())
 		}

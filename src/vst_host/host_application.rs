@@ -43,6 +43,7 @@ impl<'a> IHostApplication_Impl for HostApplication_Impl<'a> {
 		if iid == IMessage::IID {
 			if let Ok(message) = ComObject::new(Message::new()).cast::<IMessage>() {
 				unsafe { *ppv = message.into_raw() as *mut std::ffi::c_void };
+				println!("Created message on demand");
 				S_OK
 			}
 			else {
@@ -52,6 +53,7 @@ impl<'a> IHostApplication_Impl for HostApplication_Impl<'a> {
 		else if iid == IAttributeList::IID {
 			if let Ok(attrib_list) = ComObject::new(AttributeList::new()).cast::<IAttributeList>() {
 				unsafe { *ppv = attrib_list.into_raw() as *mut std::ffi::c_void };
+				println!("Created attribute list on demand");
 				S_OK
 			}
 			else {
