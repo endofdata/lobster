@@ -20,14 +20,15 @@ mod process_setup;
 mod routing_info;
 mod speaker_arrangement;
 mod plugin_library;
-mod plugin;
 mod host_application;
 mod connection_proxy;
 mod str_conv;
 mod message;
 mod attrib_list;
 
+pub mod thread_check;
 pub mod host;
+pub mod plugin;
 pub mod error;
 
 pub use error::*;
@@ -51,6 +52,7 @@ use self::vst_event::Event;
 pub const MAX_NAME_LENGTH : usize = 32;
 pub const VST_AUDIO_EFFECT_CLASS : &'static str = "Audio Module Class";
 pub const STRING_128_SIZE : usize = 128;
+pub const PLATFORM_TYPE_HWND : FIDString = c"HWND".as_ptr() as FIDString;
 
 pub type ParamID = u32;
 pub type ParamValue = f64;
@@ -172,6 +174,7 @@ pub enum ParameterFlags
 ///
 /// A parameter info describes a parameter of the controller. The id must always be the same
 /// for a parameter as this uniquely identifies the parameter.
+#[repr(C)]
 pub struct ParameterInfo
 {
 	/// unique identifier of this parameter (named tag too)
@@ -549,6 +552,7 @@ pub unsafe trait IComponentHandler : IUnknown
 
 /// Graphical rectangle structure. Used with IPlugView.
 #[repr(C)]
+#[derive(Default, PartialEq)]
 pub struct ViewRect
 {
 	left: i32,
