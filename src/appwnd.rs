@@ -1,36 +1,37 @@
-use std::sync::Once;
+use std::{any::Any, cell::RefCell, sync::Once};
 use windows::{
-    core::{w, Interface, Result, GUID, HSTRING, PCWSTR},
+    core::{implement, w, Interface, Result, GUID, HRESULT, HSTRING, PCWSTR},
     Graphics::SizeInt32,
     Win32::{
-        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
-        System::{LibraryLoader::GetModuleHandleW, WinRT::Composition::ICompositorDesktopInterop},
+        Foundation::{E_FAIL, HINSTANCE, HWND, LPARAM, LRESULT, RECT, S_OK, WPARAM},
+        System::{LibraryLoader::GetModuleHandleW, WinRT::Composition::ICompositorDesktopInterop, Threading::GetCurrentThreadId},
         UI::WindowsAndMessaging::{
-            AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowLongPtrW,
-			LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow,
-			CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MB_ICONINFORMATION, SW_SHOW,
-			WM_DESTROY, WM_LBUTTONDOWN, WM_NCCREATE, WNDCLASSW, WS_EX_NOREDIRECTIONBITMAP, WS_OVERLAPPEDWINDOW
+            AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowInfo, GetWindowLongPtrW, LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageW, SetWindowLongPtrW, SetWindowPos, ShowWindow, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HWND_TOP, IDC_ARROW, MB_ICONWARNING, SWP_NOACTIVATE, SWP_NOCOPYBITS, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_SHOW, WINDOWINFO, WM_CREATE, WM_DESTROY, WM_LBUTTONDOWN, WM_NCCREATE, WNDCLASSW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_OVERLAPPEDWINDOW, WS_OVERLAPPEDWINDOW
         },
     },
     UI::Composition::{Compositor, Desktop::DesktopWindowTarget},
 };
+use windows_core::{AsImpl, ComObject, ComObjectInner, ComObjectInterface, IUnknown, InterfaceRef};
+
 //use windows_numerics::Vector2;
 
-use crate::vst_host::{
-	host::Host,
-	VST_AUDIO_EFFECT_CLASS
-};
+use crate::{plug_frame::PlugFrame, vst_host::{
+	host::Host, plugin::Plugin, thread_check::ThreadCheck, Error, IPlugFrame, IPlugFrame_Impl, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS
+}};
 
 static REGISTER_WINDOW_CLASS: Once = Once::new();
 const WINDOW_CLASS_NAME: PCWSTR = w!("vsthost-rs.Window");
 
 pub struct AppWindow {
     handle: HWND,
-    //host: Host,
+	host: Host,
+	vst_id: Option<String>,
+	plugin: Option<Plugin>,
+	resize_recursion_guard: RefCell<bool>
 }
 
 impl AppWindow {
-    pub fn new(title: &str, width: u32, height: u32) -> Result<Box<Self>> {
+    pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Box<Self>> {
         let instance = unsafe { GetModuleHandleW(None)? };
         REGISTER_WINDOW_CLASS.call_once(|| {
             let class = WNDCLASSW {
@@ -43,7 +44,7 @@ impl AppWindow {
             assert_ne!(unsafe { RegisterClassW(&class) }, 0);
         });
 
-        let window_ex_style = WS_EX_NOREDIRECTIONBITMAP;
+        let window_ex_style = WS_EX_OVERLAPPEDWINDOW; //  WS_EX_NOREDIRECTIONBITMAP;
         let window_style = WS_OVERLAPPEDWINDOW;
 
         let (adjusted_width, adjusted_height) = {
@@ -59,12 +60,16 @@ impl AppWindow {
             (rect.right - rect.left, rect.bottom - rect.top)
         };
 
-        let mut result = Box::new(Self {
+        let mut app_wnd = Box::new(Self {
             handle: HWND::default(),
-            //host,
-        });
+            host,
+			vst_id: None,
+			plugin: None,
+			resize_recursion_guard: RefCell::new(false)
+		});
 
         let hinstance: HINSTANCE = instance.into();
+
         let window = unsafe {
             CreateWindowExW(
                 window_ex_style,
@@ -78,22 +83,49 @@ impl AppWindow {
                 None,
                 None,
                 Some(hinstance),
-                Some(result.as_mut() as *mut _ as _),
+                Some(app_wnd.as_mut() as *mut AppWindow as _),
             )?
         };
         unsafe { _ = ShowWindow(window, SW_SHOW) };
 
-        Ok(result)
+        Ok(app_wnd)
     }
 
-	#[allow(dead_code)]
-    pub fn get_size(&self) -> Result<SizeInt32> {
-        get_window_size(self.handle)
-    }
+	pub fn resize_view(&self, view: &IPlugView, new_size: &ViewRect) -> Result<()> {
+		if *self.resize_recursion_guard.borrow() == true {
+			Ok(())
+		}
+		else {
+			let mut view_rect = ViewRect::default();
 
-    pub fn handle(&self) -> HWND {
-        self.handle
-    }
+			unsafe { view.getSize(&mut view_rect as *mut ViewRect) }.ok()
+			.and_then(|_| {
+				if &view_rect == new_size {
+					S_OK.ok()
+				}
+				else {
+					*self.resize_recursion_guard.borrow_mut() = true;
+
+					let mut window_info = WINDOWINFO::default();
+					let mut client_rect = RECT { left: 0, top: 0, right: new_size.get_width(), bottom: new_size.get_height()};
+
+					let result = unsafe {
+						GetWindowInfo (self.handle, &mut window_info)
+							.and_then(|_| AdjustWindowRectEx (&mut client_rect, window_info.dwStyle, false, window_info.dwExStyle))
+							.and_then(|_| SetWindowPos (
+								self.handle, Some(HWND_TOP), 0, 0,
+								client_rect.right - client_rect.left,
+								client_rect.bottom - client_rect.top,
+								SWP_NOMOVE | SWP_NOCOPYBITS | SWP_NOACTIVATE))
+					};
+
+					*self.resize_recursion_guard.borrow_mut() = false;
+
+					result
+				}
+			})
+		}
+	}
 
     pub fn create_window_target(
         &self,
@@ -101,15 +133,49 @@ impl AppWindow {
         is_topmost: bool,
     ) -> Result<DesktopWindowTarget> {
         let compositor_desktop: ICompositorDesktopInterop = compositor.cast()?;
-        unsafe { compositor_desktop.CreateDesktopWindowTarget(self.handle(), is_topmost) }
+        unsafe { compositor_desktop.CreateDesktopWindowTarget(self.get_handle(), is_topmost) }
     }
 
-    fn message_handler(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+	fn add_plugin(&mut self, library_path: &str) -> std::result::Result<String, crate::Error> {
+		let vst_id = self.host.add_plugin_library(library_path)?;
+		Ok(vst_id)
+	}
+
+	fn create_plugin(&self, vst_id: &str, thread_check: ThreadCheck, fx_id: Option<GUID>, category: Option<&str>) -> std::result::Result<Plugin, crate::Error> {
+		let lib = self.host.get_plugin_library(&vst_id)?;
+		let category = category.unwrap_or(VST_AUDIO_EFFECT_CLASS);
+		let audio_effect_id = fx_id.or_else(|| {
+			for info in lib.get_class_infos() {
+				if let Some(cat) = info.category {
+					if cat == category {
+						return Some(info.cid)
+					}
+				}
+			}
+			None
+		});
+
+		if audio_effect_id.is_none() {
+			Err(crate::Error::from_other("No class of category '{}' was found.", ))
+		}
+		else {
+			let plugin = lib.create_plugin(self.host.get_application(), &audio_effect_id, thread_check)?;
+			Ok(plugin)
+		}
+	}
+
+
+    fn on_message(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         match message {
-            WM_DESTROY => {
-                unsafe { PostQuitMessage(0) };
-                return LRESULT(0);
-            }
+			WM_CREATE => {
+				match self.add_plugin(crate::VST_LIBRARY_PATH) {
+					Ok(vst_id) => self.vst_id = Some(vst_id),
+					Err(e) => {
+						self.vst_id = None;
+						self.show_error(e);
+					}
+				};
+			}
             // WM_MOUSEMOVE => {
             //     let (x, y) = get_mouse_position(lparam);
             //     let point = Vector2 {
@@ -127,118 +193,85 @@ impl AppWindow {
             //     self.game.on_parent_size_changed(&new_size).unwrap();
             // }
             WM_LBUTTONDOWN => {
-                if let Err(e) = vst_check() {
-					unsafe { MessageBoxW(Some(self.handle), &HSTRING::from(e.to_string()), w!("VST check failed"), MB_ICONINFORMATION) };
+				if let Some(vst_id) = &self.vst_id {
+					self.create_plugin(vst_id, ThreadCheck::for_current_thread(), None, None)
+						.and_then(|mut plugin| plugin.create_view(&PlugFrame::new(self).into(), &self.get_handle())
+							.or_else(|e| Err(e.into()))
+							.and_then(|_| {
+								self.plugin = Some(plugin);
+								Ok(())
+					})).unwrap_or_else(|e| self.show_error(e));
+
+					// unsafe { SetWindowPos (self.handle, Some(HWND_TOP), 0, 0, 0, 0,
+	              	// 	SWP_NOSIZE | SWP_NOMOVE | SWP_NOCOPYBITS | SWP_SHOWWINDOW) };
 				}
             }
             // WM_RBUTTONDOWN => {
             //     self.game.on_pointer_pressed(true, false).unwrap();
             // }
-            _ => {}
+			WM_DESTROY => {
+				unsafe { PostQuitMessage(0) };
+				return LRESULT(0);
+            }
+			_ => {}
         }
         unsafe { DefWindowProcW(self.handle, message, wparam, lparam) }
     }
 
-    unsafe extern "system" fn wnd_proc(
-        window: HWND,
-        message: u32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> LRESULT {
+	fn show_error(&self, error: crate::Error) {
+		unsafe { MessageBoxW(Some(self.handle), &HSTRING::from(error.to_string()), w!("Lobster"), MB_ICONWARNING) };
+	}
+
+    pub fn get_handle(&self) -> HWND {
+        self.handle
+    }
+
+	#[allow(dead_code)]
+	fn get_window_size(&self) -> Result<SizeInt32> {
+		unsafe {
+			let mut rect = RECT::default();
+
+			GetClientRect(self.handle, &mut rect)?;
+
+			Ok(SizeInt32 {
+				Width: rect.right - rect.left,
+				Height: rect.bottom - rect.top,
+			})
+		}
+	}
+
+	#[allow(dead_code)]
+	fn get_mouse_position(lparam: LPARAM) -> (isize, isize) {
+		(lparam.0 & 0xffff, (lparam.0 >> 16) & 0xffff)
+	}
+
+    unsafe extern "system" fn wnd_proc(handle: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
 		unsafe {
 			if message == WM_NCCREATE {
 				let cs = lparam.0 as *const CREATESTRUCTW;
-				let this = (*cs).lpCreateParams as *mut Self;
-				(*this).handle = window;
+				let app_wnd = (*cs).lpCreateParams as *mut Self;
 
-				SetWindowLongPtrW(window, GWLP_USERDATA, this as _);
+				(*app_wnd).handle = handle;
+				SetWindowLongPtrW(handle, GWLP_USERDATA, app_wnd as _);
 			} else {
-				let this = GetWindowLongPtrW(window, GWLP_USERDATA) as *mut Self;
+				let this = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self;
 
 				if let Some(this) = this.as_mut() {
-					return this.message_handler(message, wparam, lparam);
+					return this.on_message(message, wparam, lparam);
 				}
 			}
-			DefWindowProcW(window, message, wparam, lparam)
+			DefWindowProcW(handle, message, wparam, lparam)
 		}
     }
 }
 
-fn get_window_size(window_handle: HWND) -> Result<SizeInt32> {
-    unsafe {
-        let mut rect = RECT::default();
-        GetClientRect(window_handle, &mut rect)?;
-        let width = rect.right - rect.left;
-        let height = rect.bottom - rect.top;
-        Ok(SizeInt32 {
-            Width: width,
-            Height: height,
-        })
-    }
-}
-
-#[allow(dead_code)]
-fn get_mouse_position(lparam: LPARAM) -> (isize, isize) {
-    let x = lparam.0 & 0xffff;
-    let y = (lparam.0 >> 16) & 0xffff;
-    (x, y)
-}
-
-fn vst_check() -> std::result::Result<(), crate::Error> {
-	// Yamaha Steinberg USB ASIO
-	let clsid = GUID {
-		data1: 0xCB7F9FFD,
-		data2: 0xA33B,
-		data3: 0x48B2,
-		data4: [0x8B, 0xC0, 0x43, 0x7D, 0x94, 0xF3, 0x71, 0x42],
-	};
-
-	let mut host = Host::new(&clsid, "Lobster")?;
-
-	let library_path = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
-	//let library_path = "C:\\Program Files\\Common Files\\VST3\\LVCMeter_x64.vst3";
-
-	let vst_id = host.add_plugin_library(library_path)?;
-	let lib = host.get_plugin_library(&vst_id)?;
-
-	println!("Created VST:\n  Vendor: {:?}\n  URL: {:?}\n  EMail: {:?}\n  Flags: {:?}\n  Class Infos:",
-		lib.get_vendor(), lib.get_url(), lib.get_email(), lib.get_flags());
-
-	let mut audio_effect_id : Option<GUID> = None;
-
-	for info in lib.get_class_infos() {
-		println!("    {:?} {:?} {:?}: {:?} - {:?} [{:?}]", info.vendor, info.name, info.version, info.category, info.sub_categories, info.cid);
-		if let Some(cat) = info.category {
-			if cat == VST_AUDIO_EFFECT_CLASS {
-				audio_effect_id = Some(info.cid)
-			}
+impl Drop for AppWindow {
+	fn drop(&mut self) {
+		if let Some(plugin) = self.plugin.take() {
+			drop(plugin);
 		}
 	}
-
-	if audio_effect_id.is_none() {
-		eprintln!("No class of category '{}' was found.", VST_AUDIO_EFFECT_CLASS);
-	}
-	else {
-		let plugin = lib.create_plugin(host.get_application(), &audio_effect_id)?;
-		println!("Created plugin");
-
-		let parameter_count = plugin.get_parameter_count();
-		println!("  Plugin has {} parameter(s).", parameter_count);
-
-		let plug_view = plugin.create_view()?;
-
-		let can_resize = unsafe { plug_view.canResize() }.is_ok();
-		println!("  PlugView can resize: {}", can_resize);
-
-		let audio_processor = plugin.create_audio_processor()?;
-
-		let sample_size = std::mem::size_of::<f32>() as i32;
-		if unsafe { audio_processor.canProcessSampleSize(sample_size).is_err() } {
-			println!("  Plugin cannot process samples of size {} byte(s).", sample_size);
-		}
-		else {
-			println!("  Plugin can process samples of size {} byte(s).", sample_size);
-		}
-	}
-	Ok(())
 }
+
+
+
