@@ -13,6 +13,7 @@ pub struct Error {
 }
 
 impl Error {
+	#[allow(dead_code)]
 	pub fn from_hresult(description: &str, hr: HRESULT) -> Self {
 		Self {
 			description: description.into(),
@@ -24,6 +25,13 @@ impl Error {
 		Self {
 			description: format!("{}: {}", description, e.message()),
 			source: Some(NestedError::System(e.code()))
+		}
+	}
+
+	pub fn from_other(description: &str) -> Self {
+		Self {
+			description: description.into(),
+			source: None
 		}
 	}
 
