@@ -44,7 +44,7 @@ impl AppWindow {
             assert_ne!(unsafe { RegisterClassW(&class) }, 0);
         });
 
-        let window_ex_style = WS_EX_OVERLAPPEDWINDOW; //  WS_EX_NOREDIRECTIONBITMAP;
+        let window_ex_style = WS_EX_OVERLAPPEDWINDOW; // | WS_EX_NOREDIRECTIONBITMAP;
         let window_style = WS_OVERLAPPEDWINDOW;
 
         let (adjusted_width, adjusted_height) = {
@@ -96,34 +96,24 @@ impl AppWindow {
 			Ok(())
 		}
 		else {
-			let mut view_rect = ViewRect::default();
+			*self.resize_recursion_guard.borrow_mut() = true;
 
-			unsafe { view.getSize(&mut view_rect as *mut ViewRect) }.ok()
-			.and_then(|_| {
-				if &view_rect == new_size {
-					S_OK.ok()
-				}
-				else {
-					*self.resize_recursion_guard.borrow_mut() = true;
+			let mut window_info = WINDOWINFO::default();
+			let mut client_rect = RECT { left: 0, top: 0, right: new_size.get_width(), bottom: new_size.get_height()};
 
-					let mut window_info = WINDOWINFO::default();
-					let mut client_rect = RECT { left: 0, top: 0, right: new_size.get_width(), bottom: new_size.get_height()};
+			let result = unsafe {
+				GetWindowInfo (self.handle, &mut window_info)
+					.and_then(|_| AdjustWindowRectEx (&mut client_rect, window_info.dwStyle, false, window_info.dwExStyle))
+					.and_then(|_| SetWindowPos (
+						self.handle, Some(HWND_TOP), 0, 0,
+						client_rect.right - client_rect.left,
+						client_rect.bottom - client_rect.top,
+						SWP_NOMOVE | SWP_NOCOPYBITS | SWP_NOACTIVATE))
+			};
 
-					let result = unsafe {
-						GetWindowInfo (self.handle, &mut window_info)
-							.and_then(|_| AdjustWindowRectEx (&mut client_rect, window_info.dwStyle, false, window_info.dwExStyle))
-							.and_then(|_| SetWindowPos (
-								self.handle, Some(HWND_TOP), 0, 0,
-								client_rect.right - client_rect.left,
-								client_rect.bottom - client_rect.top,
-								SWP_NOMOVE | SWP_NOCOPYBITS | SWP_NOACTIVATE))
-					};
+			*self.resize_recursion_guard.borrow_mut() = false;
 
-					*self.resize_recursion_guard.borrow_mut() = false;
-
-					result
-				}
-			})
+			result
 		}
 	}
 
@@ -201,14 +191,8 @@ impl AppWindow {
 								self.plugin = Some(plugin);
 								Ok(())
 					})).unwrap_or_else(|e| self.show_error(e));
-
-					// unsafe { SetWindowPos (self.handle, Some(HWND_TOP), 0, 0, 0, 0,
-	              	// 	SWP_NOSIZE | SWP_NOMOVE | SWP_NOCOPYBITS | SWP_SHOWWINDOW) };
 				}
             }
-            // WM_RBUTTONDOWN => {
-            //     self.game.on_pointer_pressed(true, false).unwrap();
-            // }
 			WM_DESTROY => {
 				unsafe { PostQuitMessage(0) };
 				return LRESULT(0);
