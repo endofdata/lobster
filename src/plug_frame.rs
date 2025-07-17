@@ -17,6 +17,7 @@ impl <'a> PlugFrame<'a> {
 }
 
 impl<'a> IPlugFrame_Impl for PlugFrame_Impl<'a> {
+	#[allow(non_snake_case)]
 	unsafe fn resizeView(&self, view: *const IPlugView, newSize: *const ViewRect) -> HRESULT {
 		if view == std::ptr::null() || newSize == std::ptr::null() {
 			E_INVALIDARG

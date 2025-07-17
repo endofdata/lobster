@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 
-use crate::vst_host::{thread_check::ThreadCheck, Error, IConnectionPoint, IConnectionPoint_Impl, IMessage};
-use windows::Win32::Foundation::{E_FAIL, E_INVALIDARG, S_FALSE};
-use windows_core::{implement, AsImpl, ComObjectInterface, Interface, InterfaceRef, HRESULT};
+use crate::vst_host::{thread_check::ThreadCheck, IConnectionPoint, IConnectionPoint_Impl, IMessage};
+use windows::Win32::Foundation::{E_INVALIDARG, S_FALSE};
+use windows_core::{implement, ComObjectInterface, Interface, InterfaceRef, HRESULT};
 
 #[implement(IConnectionPoint)]
 pub struct ConnectionProxy
@@ -31,12 +31,6 @@ impl Drop for ConnectionProxy {
 	fn drop(&mut self) {
 		println!("Dropping connection proxy");
 	}
-}
-
-fn iface_from_raw<'a, T: Interface>(raw: *const T) -> Option<T> {
-	let raw_mut_void = raw as *mut std::ffi::c_void;
-	unsafe { T::from_raw_borrowed(&raw_mut_void) }
-		.and_then(|iface| Some(iface.clone()))
 }
 
 impl IConnectionPoint_Impl for ConnectionProxy_Impl {
