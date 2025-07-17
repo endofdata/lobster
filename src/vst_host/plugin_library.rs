@@ -1,18 +1,16 @@
 use libloading::Library;
 use windows::core::{IUnknown, Interface, GUID};
-use windows_core::ComObject;
-use crate::vst_host::connection_proxy::ConnectionProxy;
 use crate::vst_host::factory_flags::FactoryFlags;
 use crate::vst_host::pclass_info::{ClassInfo, PClassInfo, PClassInfo2, PClassInfoW};
 use crate::vst_host::pfactory_info::PFactoryInfo;
 use crate::vst_host::plugin::Plugin;
 use crate::vst_host::thread_check::ThreadCheck;
-use crate::vst_host::{IConnectionPoint, IEditController, IPluginFactory2, IPluginFactory3, VST_AUDIO_EFFECT_CLASS};
+use crate::vst_host::{IEditController, IPluginFactory2, IPluginFactory3, VST_AUDIO_EFFECT_CLASS};
 
 use super::{IPluginFactory, IComponent};
 use super::Error;
 
-/// Iterator over [ClassInfo] as provided by [PluginLibrary::get_class_infos]
+/// Iterator over [ClassInfo] as provided by [PluginLibrary::get_class_infos] or [IntoIterator::into_iter]
 pub struct ClassInfoIter<'a> {
 	lib: &'a PluginLibrary,
 	pos: usize,
@@ -151,9 +149,17 @@ impl PluginLibrary {
 	/// The iteration returns items from the highest available plugin factory interface version
 	/// implemented by the library.
 	pub fn get_class_infos<'a>(&'a self) -> ClassInfoIter<'a> {
-		ClassInfoIter::new(self)
+		self.into_iter()
 	}
 
+	/// Creates a plugin instance
+	///
+	/// If *fx_clsid* is specified, the component is created by calling [Self::create_instance], otherwise
+	/// [Self::create_component_by_category] is called for category [VST_AUDIO_EFFECT_CLASS]. The component's
+	/// initialization method is called, forwarding *context* as parameter.
+	///
+	/// An [IEditController] is queried directly via the [IComponent] instance or otherwise by calling
+	/// [Self::create_instance] with the class ID provided by [IComponent::getControllerClassId].
 	pub fn create_plugin(&self, context: IUnknown, fx_clsid: &Option<GUID>, thread_check: ThreadCheck) -> Result<Plugin, Error> {
 		let raw_context : *const IUnknown = unsafe { std::mem::transmute_copy(&context) };
 
@@ -168,27 +174,18 @@ impl PluginLibrary {
 		}
 		else {
 			component.cast::<IEditController>()
-				.or_else(|_| {
-					let mut class_id = GUID::zeroed();
-					let hr = unsafe { component.getControllerClassId(&mut class_id) };
-
-					if hr.is_err() {
-						Err(Error::from_hresult("Could not get controller class id", hr))
-					}
-					else {
-						self.create_instance::<IEditController>(&class_id)
-					}
-				})
-				.and_then(|edit_controller| {
-					let hr = unsafe { edit_controller.initialize(raw_context) };
-
-					if hr.is_err() {
-						Err(Error::from_hresult("Could not initialize IEditController", hr))
-					}
-					else {
-						Plugin::new(component, edit_controller, thread_check)
-					}
-				})
+			.or_else(|_| {
+				let mut class_id = GUID::zeroed();
+				unsafe { component.getControllerClassId(&mut class_id) }.ok()
+				.or_else(|e| Err(Error::from_windows("Failed to retrieve controller class ID", e)))
+				.and_then(|_|
+					self.create_instance::<IEditController>(&class_id)
+					.and_then(|edit_controller|
+						unsafe { edit_controller.initialize(raw_context) }.ok()
+						.or_else(|e| Err(Error::from_windows("Could not initialize IEditController", e)))
+						.and_then(|_| Ok(edit_controller))))
+			})
+			.and_then(|edit_controller| Plugin::new(component, edit_controller, thread_check))
 		}
 	}
 
@@ -208,43 +205,23 @@ impl PluginLibrary {
 			match &self.factory_3 {
 				Some(factory_3) => {
 					let mut pclass_info_w = PClassInfoW::new();
-					unsafe {
-						let hr = factory_3.getClassInfoUnicode(index as i32, &mut pclass_info_w);
-						if hr.is_err()
-						{
-							Err(Error::from_hresult("Failed to get class info (unicode).", hr))
-						}
-						else
-						{
-							Ok(ClassInfo::from_class_info_w(&pclass_info_w))
-						}
-					}
+					unsafe { factory_3.getClassInfoUnicode(index as i32, &mut pclass_info_w) }.ok()
+					.and_then(|_| Ok(ClassInfo::from_class_info_w(&pclass_info_w)))
+					.or_else(|e| Err(Error::from_windows("Failed to get class info (unicode).", e)))
 				},
 				None => {
 					match &self.factory_2 {
 						Some(factory_2) => {
 							let mut pclass_info_2 = PClassInfo2::new();
-							unsafe {
-								let hr = factory_2.getClassInfo2(index as i32, &mut pclass_info_2);
-								if hr.is_err() {
-									Err(Error::from_hresult("Failed to get class info (v2).", hr))
-								}
-								else {
-									Ok(ClassInfo::from_class_info_2(&pclass_info_2))
-								}
-							}
+							unsafe { factory_2.getClassInfo2(index as i32, &mut pclass_info_2) }.ok()
+							.and_then(|_| Ok(ClassInfo::from_class_info_2(&pclass_info_2)))
+							.or_else(|e| Err(Error::from_windows("Failed to get class info (v2).", e)))
 						},
 						None => {
 							let mut pclass_info = PClassInfo::new();
-							unsafe {
-								let hr = self.get_factory().getClassInfo(index as i32, &mut pclass_info);
-								if hr.is_err() {
-									Err(Error::from_hresult("Failed to get class info.", hr))
-								}
-								else {
-									Ok(ClassInfo::from_class_info(&pclass_info))
-								}
-							}
+							unsafe { self.get_factory().getClassInfo(index as i32, &mut pclass_info) }.ok()
+							.and_then(|_| Ok(ClassInfo::from_class_info(&pclass_info)))
+							.or_else(|e| Err(Error::from_windows("Failed to get class info.", e)))
 						}
 					}
 				}
@@ -313,6 +290,15 @@ impl PluginLibrary {
 	}
 }
 
+impl<'a> IntoIterator for &'a PluginLibrary {
+	type Item = ClassInfo;
+	type IntoIter = ClassInfoIter<'a>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		ClassInfoIter::new(self)
+	}
+}
+
 impl Drop for PluginLibrary {
 	fn drop(&mut self) {
 		println!("Dropping plugin factories");
@@ -336,10 +322,8 @@ impl Drop for PluginLibrary {
 #[cfg(test)]
 mod test {
 	use windows::Win32::Foundation::E_NOTIMPL;
-	use windows_core::{implement, ComObject, GUID, HRESULT};
-	use crate::vst_host::{str_conv::StrConv, Error, IEditController, IHostApplication, IHostApplication_Impl, IPlugView, String128, STRING_128_SIZE};
-
-	use super::PluginLibrary;
+	use windows_core::{implement, GUID, HRESULT};
+	use crate::vst_host::{plugin_library::PluginLibrary, str_conv::StrConv, IHostApplication, IHostApplication_Impl, String128, STRING_128_SIZE};
 
 	const LIBRARY_PATH : &str = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 
@@ -362,5 +346,24 @@ mod test {
 		unsafe fn createInstance(&self, _cid: *const GUID, _iid: *const GUID, _ppv: *mut *const std::ffi::c_void) -> HRESULT {
 			E_NOTIMPL
 		}
+	}
+
+	#[test]
+	fn show_class_infos() {
+		let result = PluginLibrary::load(LIBRARY_PATH);
+
+		assert!(result.is_ok(),
+			"Loading VST3 library '{}' should succeed.", LIBRARY_PATH);
+
+		let lib = result.unwrap();
+		let mut count = 0;
+
+		for class_info in &lib {
+			println!("{:?}", class_info);
+			count += 1;
+		}
+
+		assert_eq!(lib.count_classes(), count,
+			"Number of enumerated classes should match claimed class count");
 	}
 }
