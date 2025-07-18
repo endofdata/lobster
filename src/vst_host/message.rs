@@ -2,7 +2,8 @@ use std::cell::RefCell;
 
 use windows::core::{implement, ComObject};
 
-use super::{attrib_list::AttributeList, str_conv::StrConv, FIDString, IAttributeList, IMessage, IMessage_Impl};
+use super::{attrib_list::AttributeList, FIDString, IAttributeList, IMessage, IMessage_Impl};
+use crate::os::StrConv;
 
 
 #[implement(IMessage)]
@@ -69,8 +70,9 @@ mod test {
 	use super::
 	{
 		Message,
-		super::{str_conv::StrConv, AttrID, IAttributeList, IMessage}
+		super::{AttrID, IAttributeList, IMessage}
 	};
+	use crate::os::StrConv;
 
 	const TEST_ATTR_ID : AttrID = c"test-attrib".as_ptr() as *const u8;
 

@@ -22,7 +22,6 @@ mod speaker_arrangement;
 mod plugin_library;
 mod host_application;
 mod connection_proxy;
-mod str_conv;
 mod message;
 mod attrib_list;
 

@@ -103,10 +103,11 @@ mod test {
 		super::{
 			thread_check::ThreadCheck,
 			message::Message,
-			str_conv::StrConv,
 			AttrID, IAttributeList, IConnectionPoint, IConnectionPoint_Impl, IMessage,
 		}
 	};
+
+	use crate::os::StrConv;
 
 	const TEST_ATTR_ID : AttrID = c"test-attrib".as_ptr() as *const u8;
 	const MAX_MSG_LEN : usize = 128;

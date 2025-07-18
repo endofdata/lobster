@@ -1,18 +1,20 @@
-use windows::
-	core::{implement, HRESULT}
-;
-use windows::Win32::Foundation::{E_FAIL, E_INVALIDARG, S_OK};
-use windows_core::Interface;
+use windows::{
+	core::{implement, Interface, HRESULT, Result},
+	Win32::Foundation::{E_FAIL, E_INVALIDARG, S_OK}
+};
 
 use crate::vst_host::{IPlugFrame, IPlugFrame_Impl, IPlugView, ViewRect};
-use crate::appwnd::AppWindow;
+
+pub trait Resizable {
+	fn resize_view(&self, view: &IPlugView, new_size: &ViewRect) -> Result<()>;
+}
 
 #[implement(IPlugFrame)]
-pub struct PlugFrame<'a>(&'a AppWindow);
+pub struct PlugFrame<'a>(&'a dyn Resizable);
 
-impl <'a> PlugFrame<'a> {
-	pub fn new(app_wnd: &'a AppWindow) -> Self {
-		Self(app_wnd)
+impl<'a> PlugFrame<'a> {
+	pub fn new<R: Resizable>(plug_wnd: &'a R) -> Self {
+		Self(plug_wnd)
 	}
 }
 

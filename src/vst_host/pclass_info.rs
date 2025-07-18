@@ -1,5 +1,6 @@
-use super::{class_cardinality::ClassCardinality, str_conv::StrConv };
+use super::{class_cardinality::ClassCardinality };
 use windows::core::GUID;
+use crate::os::StrConv;
 
 pub const CATEGORY_SIZE : usize = 32;
 pub const NAME_SIZE : usize = 64;

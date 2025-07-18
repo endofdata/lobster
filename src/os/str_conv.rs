@@ -98,7 +98,7 @@ impl StrConv {
 		.ok()
 	}
 
-	/// Write the utf-16 encoded `value` codepoints as little-endian byte pairs to `target`
+	/// Write the utf-16 encoded `value` codepoints to `target`
 	///
 	/// If `zero_term` is `true` the `target` is always terminated with `0u16`.
 	pub fn str_to_w_str(value: &str, target: *mut u16, max: usize, zero_term: bool) -> usize {

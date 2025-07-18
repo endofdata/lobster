@@ -8,8 +8,10 @@ use windows::{
 
 use super::{
 	AttrID, IAttributeList, IAttributeList_Impl,
-	str_conv::StrConv
+
 };
+
+use crate::os::StrConv;
 
 const MAX_ATTRKEY_LEN: usize = 64;
 

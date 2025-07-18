@@ -1,4 +1,4 @@
-use std::{any::Any, cell::RefCell, sync::Once};
+use std::{any::Any, cell::RefCell, sync::{Once, OnceLock}};
 use windows::{
     core::{implement, w, Interface, Result, GUID, HRESULT, HSTRING, PCWSTR},
     Graphics::SizeInt32,
@@ -15,12 +15,13 @@ use windows_core::{AsImpl, ComObject, ComObjectInner, ComObjectInterface, IUnkno
 
 //use windows_numerics::Vector2;
 
-use crate::{plug_frame::PlugFrame, vst_host::{
+use crate::{plug_frame::{PlugFrame, Resizable}, vst_host::{
 	host::Host, plugin::Plugin, thread_check::ThreadCheck, Error, IPlugFrame, IPlugFrame_Impl, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS
 }};
 
-static REGISTER_WINDOW_CLASS: Once = Once::new();
-const WINDOW_CLASS_NAME: PCWSTR = w!("vsthost-rs.Window");
+use crate::ui::{WndBase, WndClass, Boilerplate};
+
+static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
 
 pub struct AppWindow {
     handle: HWND,
@@ -32,33 +33,10 @@ pub struct AppWindow {
 
 impl AppWindow {
     pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Box<Self>> {
-        let instance = unsafe { GetModuleHandleW(None)? };
-        REGISTER_WINDOW_CLASS.call_once(|| {
-            let class = WNDCLASSW {
-                hCursor: unsafe { LoadCursorW(None, IDC_ARROW).ok().unwrap() },
-                hInstance: instance.into(),
-                lpszClassName: WINDOW_CLASS_NAME,
-                lpfnWndProc: Some(Self::wnd_proc),
-                ..Default::default()
-            };
-            assert_ne!(unsafe { RegisterClassW(&class) }, 0);
-        });
 
-        let window_ex_style = WS_EX_OVERLAPPEDWINDOW; // | WS_EX_NOREDIRECTIONBITMAP;
-        let window_style = WS_OVERLAPPEDWINDOW;
+		let mut bp = Boilerplate::<AppWindow>::new();
 
-        let (adjusted_width, adjusted_height) = {
-            let mut rect = RECT {
-                left: 0,
-                top: 0,
-                right: width as i32,
-                bottom: height as i32,
-            };
-            unsafe {
-                AdjustWindowRectEx(&mut rect, window_style, false, window_ex_style)?;
-            }
-            (rect.right - rect.left, rect.bottom - rect.top)
-        };
+		bp.register(&WINDOW_CLASS, "lobster.wndclass", None)?;
 
         let mut app_wnd = Box::new(Self {
             handle: HWND::default(),
@@ -68,54 +46,13 @@ impl AppWindow {
 			resize_recursion_guard: RefCell::new(false)
 		});
 
-        let hinstance: HINSTANCE = instance.into();
+		// WS_EX_NOREDIRECTIONBITMAP
+		bp.create_window(&mut app_wnd, "lobster", width, height, WS_OVERLAPPEDWINDOW, WS_EX_OVERLAPPEDWINDOW)?;
 
-        let window = unsafe {
-            CreateWindowExW(
-                window_ex_style,
-                WINDOW_CLASS_NAME,
-                &HSTRING::from(title),
-                window_style,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                adjusted_width,
-                adjusted_height,
-                None,
-                None,
-                Some(hinstance),
-                Some(app_wnd.as_mut() as *mut AppWindow as _),
-            )?
-        };
-        unsafe { _ = ShowWindow(window, SW_SHOW) };
+		app_wnd.show_window();
 
         Ok(app_wnd)
     }
-
-	pub fn resize_view(&self, view: &IPlugView, new_size: &ViewRect) -> Result<()> {
-		if *self.resize_recursion_guard.borrow() == true {
-			Ok(())
-		}
-		else {
-			*self.resize_recursion_guard.borrow_mut() = true;
-
-			let mut window_info = WINDOWINFO::default();
-			let mut client_rect = RECT { left: 0, top: 0, right: new_size.get_width(), bottom: new_size.get_height()};
-
-			let result = unsafe {
-				GetWindowInfo (self.handle, &mut window_info)
-					.and_then(|_| AdjustWindowRectEx (&mut client_rect, window_info.dwStyle, false, window_info.dwExStyle))
-					.and_then(|_| SetWindowPos (
-						self.handle, Some(HWND_TOP), 0, 0,
-						client_rect.right - client_rect.left,
-						client_rect.bottom - client_rect.top,
-						SWP_NOMOVE | SWP_NOCOPYBITS | SWP_NOACTIVATE))
-			};
-
-			*self.resize_recursion_guard.borrow_mut() = false;
-
-			result
-		}
-	}
 
     pub fn create_window_target(
         &self,
@@ -155,52 +92,7 @@ impl AppWindow {
 	}
 
 
-    fn on_message(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-        match message {
-			WM_CREATE => {
-				match self.add_plugin(crate::VST_LIBRARY_PATH) {
-					Ok(vst_id) => self.vst_id = Some(vst_id),
-					Err(e) => {
-						self.vst_id = None;
-						self.show_error(e);
-					}
-				};
-			}
-            // WM_MOUSEMOVE => {
-            //     let (x, y) = get_mouse_position(lparam);
-            //     let point = Vector2 {
-            //         X: x as f32,
-            //         Y: y as f32,
-            //     };
-            //     self.game.on_pointer_moved(&point).unwrap();
-            // }
-            // WM_SIZE | WM_SIZING => {
-            //     let new_size = self.size().unwrap();
-            //     let new_size = Vector2 {
-            //         X: new_size.Width as f32,
-            //         Y: new_size.Height as f32,
-            //     };
-            //     self.game.on_parent_size_changed(&new_size).unwrap();
-            // }
-            WM_LBUTTONDOWN => {
-				if let Some(vst_id) = &self.vst_id {
-					self.create_plugin(vst_id, ThreadCheck::for_current_thread(), None, None)
-						.and_then(|mut plugin| plugin.create_view(&PlugFrame::new(self).into(), &self.get_handle())
-							.or_else(|e| Err(e.into()))
-							.and_then(|_| {
-								self.plugin = Some(plugin);
-								Ok(())
-					})).unwrap_or_else(|e| self.show_error(e));
-				}
-            }
-			WM_DESTROY => {
-				unsafe { PostQuitMessage(0) };
-				return LRESULT(0);
-            }
-			_ => {}
-        }
-        unsafe { DefWindowProcW(self.handle, message, wparam, lparam) }
-    }
+
 
 	fn show_error(&self, error: crate::Error) {
 		unsafe { MessageBoxW(Some(self.handle), &HSTRING::from(error.to_string()), w!("Lobster"), MB_ICONWARNING) };
@@ -228,25 +120,77 @@ impl AppWindow {
 	fn get_mouse_position(lparam: LPARAM) -> (isize, isize) {
 		(lparam.0 & 0xffff, (lparam.0 >> 16) & 0xffff)
 	}
+}
 
-    unsafe extern "system" fn wnd_proc(handle: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-		unsafe {
-			if message == WM_NCCREATE {
-				let cs = lparam.0 as *const CREATESTRUCTW;
-				let app_wnd = (*cs).lpCreateParams as *mut Self;
+impl WndBase for AppWindow {
+	fn show_window(&self) {
+		unsafe { _ = ShowWindow(self.get_handle(), SW_SHOW) };
+	}
 
-				(*app_wnd).handle = handle;
-				SetWindowLongPtrW(handle, GWLP_USERDATA, app_wnd as _);
-			} else {
-				let this = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self;
-
-				if let Some(this) = this.as_mut() {
-					return this.on_message(message, wparam, lparam);
-				}
-			}
-			DefWindowProcW(handle, message, wparam, lparam)
+	fn set_handle(&mut self, handle: Option<HWND>) {
+		if let Some(handle) = handle {
+			self.handle = handle;
 		}
+	}
+
+ 	fn on_message(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        match message {
+			WM_CREATE => {
+				match self.add_plugin(crate::VST_LIBRARY_PATH) {
+					Ok(vst_id) => self.vst_id = Some(vst_id),
+					Err(e) => {
+						self.vst_id = None;
+						self.show_error(e);
+					}
+				};
+			}
+            WM_LBUTTONDOWN => {
+				if let Some(vst_id) = &self.vst_id {
+					self.create_plugin(vst_id, ThreadCheck::for_current_thread(), None, None)
+						.and_then(|mut plugin| plugin.create_view(&PlugFrame::new(self).into(), &self.get_handle())
+							.or_else(|e| Err(e.into()))
+							.and_then(|_| {
+								self.plugin = Some(plugin);
+								Ok(())
+					})).unwrap_or_else(|e| self.show_error(e));
+				}
+            }
+			WM_DESTROY => {
+				unsafe { PostQuitMessage(0) };
+				return LRESULT(0);
+            }
+			_ => {}
+        }
+        unsafe { DefWindowProcW(self.handle, message, wparam, lparam) }
     }
+}
+
+impl Resizable for AppWindow {
+	fn resize_view(&self, view: &IPlugView, new_size: &ViewRect) -> Result<()> {
+		if *self.resize_recursion_guard.borrow() == true {
+			Ok(())
+		}
+		else {
+			*self.resize_recursion_guard.borrow_mut() = true;
+
+			let mut window_info = WINDOWINFO::default();
+			let mut client_rect = RECT { left: 0, top: 0, right: new_size.get_width(), bottom: new_size.get_height()};
+
+			let result = unsafe {
+				GetWindowInfo (self.handle, &mut window_info)
+					.and_then(|_| AdjustWindowRectEx (&mut client_rect, window_info.dwStyle, false, window_info.dwExStyle))
+					.and_then(|_| SetWindowPos (
+						self.handle, Some(HWND_TOP), 0, 0,
+						client_rect.right - client_rect.left,
+						client_rect.bottom - client_rect.top,
+						SWP_NOMOVE | SWP_NOCOPYBITS | SWP_NOACTIVATE))
+			};
+
+			*self.resize_recursion_guard.borrow_mut() = false;
+
+			result
+		}
+	}
 }
 
 impl Drop for AppWindow {

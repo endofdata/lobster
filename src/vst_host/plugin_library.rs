@@ -323,7 +323,8 @@ impl Drop for PluginLibrary {
 mod test {
 	use windows::Win32::Foundation::E_NOTIMPL;
 	use windows_core::{implement, GUID, HRESULT};
-	use crate::vst_host::{plugin_library::PluginLibrary, str_conv::StrConv, IHostApplication, IHostApplication_Impl, String128, STRING_128_SIZE};
+	use crate::vst_host::{plugin_library::PluginLibrary, IHostApplication, IHostApplication_Impl, String128, STRING_128_SIZE};
+	use crate::os::StrConv;
 
 	const LIBRARY_PATH : &str = "C:\\Program Files\\Common Files\\VST3\\Unfiltered Audio Indent.vst3";
 

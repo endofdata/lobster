@@ -1,5 +1,5 @@
 use super::factory_flags::FactoryFlags;
-use super::str_conv::StrConv;
+use crate::os::StrConv;
 
 pub const URL_SIZE : usize = 256;
 pub const EMAIL_SIZE : usize = 128;

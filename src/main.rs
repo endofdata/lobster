@@ -3,6 +3,8 @@ mod appwnd;
 mod interop;
 mod error;
 mod plug_frame;
+mod ui;
+mod os;
 
 use error::Error;
 use appwnd::AppWindow;
