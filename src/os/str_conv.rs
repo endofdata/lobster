@@ -8,6 +8,7 @@ impl StrConv {
 	/// Write the utf-16 encoded `value` codepoints as little-endian byte pairs to `target`
 	///
 	/// If `zero_term` is `true` the `target` is always terminated with two `0u8`.
+	#[allow(dead_code)]
 	pub fn str_to_bytes_w(value: &str, target: &mut [u8], zero_term: bool) -> usize {
 		let mut pos = 0;
 		let max = (target.len() - if zero_term { 1 } else {0}) / 2;
@@ -58,6 +59,7 @@ impl StrConv {
 	/// Creates a [String] from two-byte pairs, each read as little-endian utf-16 codepoint
 	///
 	/// Stops at the first byte pair of two zero-bytes or the end of `value`
+	#[allow(dead_code)]
 	pub fn bytes_w_to_string(value: &[u8]) -> Option<String> {
 		let max = value.chunks(2).count();
 		let mut conv = Vec::with_capacity(max);
@@ -101,6 +103,7 @@ impl StrConv {
 	/// Write the utf-16 encoded `value` codepoints to `target`
 	///
 	/// If `zero_term` is `true` the `target` is always terminated with `0u16`.
+	#[allow(dead_code)]
 	pub fn str_to_w_str(value: &str, target: *mut u16, max: usize, zero_term: bool) -> usize {
 		if target != std::ptr::null_mut() {
 			let utf_16 = value.encode_utf16();
@@ -124,12 +127,14 @@ impl StrConv {
 	}
 
 	/// Formats a `guid` as [String] in a format as expected by VST SDK
+	#[allow(dead_code)]
 	pub fn as_fid_string(guid: &windows::core::GUID) -> String {
 		// TODO: Check format (was: guid.to_string())
 		format!("{:?}", guid)
 	}
 
 	/// Compares two raw, zero-terminated C-style strings
+	#[allow(dead_code)]
 	pub fn c_str_cmp(a: *const u8, b: *const u8) -> isize {
 		unsafe {
 			let mut x = a;
@@ -200,6 +205,7 @@ impl StrConv {
 	}
 
 	/// Creates a [String] from the bytes starting at `value` up to the first `0u8`.
+	#[allow(dead_code)]
 	pub fn c_str_to_string(value: *const u8) -> String {
 		let cstr = unsafe { CStr::from_ptr(value as *const std::ffi::c_char) };
 		cstr.to_string_lossy().into_owned()
@@ -219,6 +225,7 @@ impl StrConv {
 		return pos;
 	}
 
+	#[allow(dead_code)]
 	pub fn w_str_to_slice_w(src: *const u16, dst: &mut [u16], zero_term: bool) -> usize {
 		let mut pos = src;
 		let mut max = dst.len() - if zero_term { 1 } else { 0};
