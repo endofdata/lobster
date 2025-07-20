@@ -10,15 +10,15 @@ pub trait Resizable {
 }
 
 #[implement(IPlugFrame)]
-pub struct PlugFrame<'a>(&'a dyn Resizable);
+pub struct Frame<'a>(&'a dyn Resizable);
 
-impl<'a> PlugFrame<'a> {
+impl<'a> Frame<'a> {
 	pub fn new<R: Resizable>(plug_wnd: &'a R) -> Self {
 		Self(plug_wnd)
 	}
 }
 
-impl<'a> IPlugFrame_Impl for PlugFrame_Impl<'a> {
+impl<'a> IPlugFrame_Impl for Frame_Impl<'a> {
 	#[allow(non_snake_case)]
 	unsafe fn resizeView(&self, view: *const IPlugView, newSize: *const ViewRect) -> HRESULT {
 		if view == std::ptr::null() || newSize == std::ptr::null() {
