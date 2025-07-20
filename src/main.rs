@@ -7,7 +7,7 @@ mod ui;
 mod os;
 
 use error::Error;
-use appwnd::AppWindow;
+use appwnd::AppWnd;
 
 use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
 #[rustfmt::skip]
@@ -34,7 +34,7 @@ fn main() -> std::result::Result<(), crate::Error> {
 	// scope to enforce cleanup before RoUninitialize
 	{
 		let host = Host::new(&ASIO_DEVICE_CLSID, "Lobster")?;
-		let _window = AppWindow::new("VST Host", 800, 600, host)?;
+		let _window = AppWnd::new("VST Host", 800, 600, host)?;
 
 		ui::run_message_loop();
 

@@ -18,7 +18,7 @@ use crate::{
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
 
-pub struct AppWindow {
+pub struct AppWnd {
     handle: Option<HWND>,
 	title: Option<String>,
 	host: Rc<RefCell<Host>>,
@@ -26,10 +26,10 @@ pub struct AppWindow {
 	plugin_wnd: Option<Box<PluginWnd>>
 }
 
-impl AppWindow {
+impl AppWnd {
     pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Box<Self>> {
 
-		let mut bp = WndClassImpl::<AppWindow>::new();
+		let mut bp = WndClassImpl::<AppWnd>::new();
 
 		bp.register(&WINDOW_CLASS, "lobster.wndclass", None)?;
 
@@ -56,7 +56,7 @@ impl AppWindow {
 
 }
 
-impl WndBase for AppWindow {
+impl WndBase for AppWnd {
 	fn set_handle(&mut self, handle: Option<HWND>) {
 		self.handle = handle;
 	}
