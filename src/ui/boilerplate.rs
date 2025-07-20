@@ -2,25 +2,35 @@ use std::{
 	marker::PhantomData, sync::OnceLock
 };
 
-use windows::Win32::UI::WindowsAndMessaging::HMENU;
+use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, GetMessageW, TranslateMessage, MSG};
 #[rustfmt::skip]
 use windows::{
 	core::{Interface, Error, Result, HSTRING, PCWSTR},
 	Win32::{
 		Foundation::{E_FAIL, E_INVALIDARG, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
-		System::{LibraryLoader::GetModuleHandleW, WinRT::Composition::ICompositorDesktopInterop},
+		System::
+		{	LibraryLoader::GetModuleHandleW,
+			WinRT::{
+				CreateDispatcherQueueController,
+				Composition::ICompositorDesktopInterop, DispatcherQueueOptions,
+				DISPATCHERQUEUE_THREAD_APARTMENTTYPE, DISPATCHERQUEUE_THREAD_TYPE, DQTAT_COM_NONE, DQTYPE_THREAD_CURRENT
+			}
+		},
 		UI::WindowsAndMessaging::{
 			AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowInfo,
 			GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MessageBoxW,
 			PostQuitMessage, RegisterClassW, SetWindowLongPtrW, SetWindowPos, ShowWindow,
 			CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HWND_TOP, IDC_ARROW, MB_ICONWARNING,
 			MESSAGEBOX_RESULT, MESSAGEBOX_STYLE, SWP_NOACTIVATE, SWP_NOCOPYBITS, SWP_NOMOVE,
-			SW_SHOW, WINDOWINFO, WINDOW_EX_STYLE, WINDOW_STYLE, WM_NCCREATE, WNDCLASSW
+			SW_SHOW, WINDOWINFO, WINDOW_EX_STYLE, WINDOW_STYLE, WM_NCCREATE, WNDCLASSW, HMENU
 		}
 	},
-	UI::Composition::{Compositor, Desktop::DesktopWindowTarget},
+	System::DispatcherQueueController,
+	UI::Composition::Compositor,
 	Graphics::SizeInt32
 };
+use windows_future::AsyncActionCompletedHandler;
+use windows_numerics::Vector2;
 
 use crate::{os::StrConv, vst_host::ViewRect};
 
@@ -136,24 +146,60 @@ pub trait WndBase {
 }
 
 pub trait Composable {
-	#[allow(dead_code)]
-	fn create_window_target(
-		&self,
-		compositor: &Compositor,
-		is_topmost: bool,
-	) -> Result<DesktopWindowTarget>;
-}
+	fn set_controller(&mut self, controller: Option<DispatcherQueueController>);
+	fn get_controller(&self) -> Result<&DispatcherQueueController>;
 
-impl<W: WndBase> Composable for W {
-	fn create_window_target(
-		&self,
-		compositor: &Compositor,
-		is_topmost: bool,
-	) -> Result<DesktopWindowTarget> {
-		let compositor_desktop: ICompositorDesktopInterop = compositor.cast()?;
-		unsafe { compositor_desktop.CreateDesktopWindowTarget(self.get_handle().unwrap_or_default(), is_topmost) }
+	fn create_controller(&mut self, hwnd_target: HWND, is_topmost: bool) -> Result<()> {
+		self.create_dispatcher_queue_controller(DQTYPE_THREAD_CURRENT, DQTAT_COM_NONE)
+		.and_then(|controller|
+			Compositor::new().and_then(|compositor|
+				compositor.CreateContainerVisual()
+				.and_then(|root| root.SetRelativeSizeAdjustment(Vector2::new(1.0, 1.0))
+				.and_then(|_| compositor.cast::<ICompositorDesktopInterop>()
+					.and_then(|compositor_desktop| {
+						unsafe { compositor_desktop.CreateDesktopWindowTarget(hwnd_target, is_topmost) }
+						.and_then(|target| {
+							 self.set_controller(Some(controller));
+							Ok(target)
+					})
+				})
+				.and_then(|target| target.SetRoot(&root))))))
+	}
+
+	fn shutdown_controller(&mut self, exit_code: i32) -> Result<i32> {
+		self.get_controller().and_then(|controller| {
+			controller.ShutdownQueueAsync().and_then(|async_action| {
+				async_action.SetCompleted(&AsyncActionCompletedHandler::new(
+					move |_, _| -> Result<()> {
+						unsafe { PostQuitMessage(exit_code) };
+						Ok(())
+					},
+				))})
+			.and_then(|_| {
+				let mut message = MSG::default();
+				unsafe {
+					while GetMessageW(&mut message, None, 0, 0).into() {
+						_ = TranslateMessage(&message);
+						DispatchMessageW(&message);
+					}
+				}
+				Ok(message.wParam.0 as i32)
+			})
+		})
+	}
+
+	fn create_dispatcher_queue_controller(&self,
+		thread_type: DISPATCHERQUEUE_THREAD_TYPE,
+		apartment_type: DISPATCHERQUEUE_THREAD_APARTMENTTYPE) -> Result<DispatcherQueueController> {
+		let options = DispatcherQueueOptions {
+			dwSize: std::mem::size_of::<DispatcherQueueOptions>() as u32,
+			threadType: thread_type,
+			apartmentType: apartment_type,
+		};
+		unsafe { CreateDispatcherQueueController(options) }
 	}
 }
+
 
 pub trait WndClass {
 	type WndType: WndBase;

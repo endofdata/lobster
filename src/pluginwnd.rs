@@ -1,8 +1,7 @@
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
 use windows::{
-	core::Result,
-	Win32::{Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM}, UI::WindowsAndMessaging::{WS_EX_TOOLWINDOW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_SYSMENU, WM_CREATE, WM_DESTROY}}
+	core::Result, System::DispatcherQueueController, Win32::{Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM}, UI::WindowsAndMessaging::{WM_CREATE, WM_DESTROY, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW, WS_SYSMENU}}
 };
 use windows_core::GUID;
 
