@@ -9,17 +9,11 @@ mod os;
 use error::Error;
 use appwnd::AppWindow;
 
+use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
+#[rustfmt::skip]
 use windows::{
-    Win32::{
-        System::WinRT::{
-			RoInitialize, RoUninitialize, RO_INIT_SINGLETHREADED
-		},
-        UI::WindowsAndMessaging::{
-			DispatchMessageW, GetMessageW, TranslateMessage, MSG
-		},
-    }
+	core::GUID
 };
-use windows_core::GUID;
 
 use crate::vst_host::host::Host;
 
@@ -35,32 +29,19 @@ const VST_LIBRARY_PATH : &str = "C:\\Program Files\\Common Files\\VST3\\Unfilter
 //const VST_LIBRARY_PATH : &str = "C:\\Program Files\\Common Files\\VST3\\LVCMeter_x64.vst3";
 
 fn main() -> std::result::Result<(), crate::Error> {
-	unsafe {
-		RoInitialize(RO_INIT_SINGLETHREADED)
-			.or_else(|e| Err(Error::from_windows("Runtime initialization failed", e)))?;
-	};
+	os::co_initialize_ex(Some(COINIT_APARTMENTTHREADED))?;
+
 	// scope to enforce cleanup before RoUninitialize
 	{
-
-
 		let host = Host::new(&ASIO_DEVICE_CLSID, "Lobster")?;
 		let _window = AppWindow::new("VST Host", 800, 600, host)?;
 
-		let mut message = MSG::default();
-
-		unsafe {
-			while GetMessageW(&mut message, None, 0, 0).into() {
-				_ = TranslateMessage(&message);
-				DispatchMessageW(&message);
-			}
-		}
+		ui::run_message_loop();
 
 		println!("Shutting down");
-
-
 	}
-	unsafe {
-		RoUninitialize();
-	}
+
+	os::co_uninitialize();
+
 	Ok(())
 }

@@ -5,7 +5,7 @@ use windows::{
 };
 use windows_core::GUID;
 
-use crate::{frame::{Frame, Resizable}, ui::{Boilerplate, WndBase, WndClass}, vst_host::{host::Host, plugin::Plugin, thread_check::ThreadCheck, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS}};
+use crate::{frame::{Frame, Resizable}, ui::{WndClassImpl, WndBase, WndClass}, vst_host::{host::Host, plugin::Plugin, thread_check::ThreadCheck, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS}};
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
 
@@ -21,7 +21,7 @@ pub struct PluginWnd {
 impl PluginWnd {
     pub fn new(title: &str, width: u32, height: u32, host: Rc<RefCell<Host>>, vst_id: &str, parent: Option<HWND>) -> Result<Box<Self>> {
 
-		let mut bp = Boilerplate::<PluginWnd>::new();
+		let mut bp = WndClassImpl::<PluginWnd>::new();
 
 		bp.register(&WINDOW_CLASS, "plugin.wndclass", None)?;
 

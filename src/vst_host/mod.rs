@@ -31,6 +31,7 @@ pub mod plugin;
 pub mod error;
 
 pub use error::*;
+use windows::Graphics::SizeInt32;
 
 use std::ffi::c_void;
 use windows::core::{interface, GUID, HRESULT, IUnknown, IUnknown_Vtbl};
@@ -194,6 +195,15 @@ pub struct ParameterInfo
 	unitId: UnitID,
 	/// ParameterFlags (see below)
 	flags: i32,
+}
+
+impl Into<SizeInt32> for &ViewRect{
+	fn into(self) -> SizeInt32 {
+		SizeInt32 {
+			Width: self.get_width(),
+			Height: self.get_height()
+		}
+	}
 }
 
 /// Basic interface to a plug-in component: IPluginBase

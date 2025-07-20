@@ -1,25 +1,25 @@
 #[rustfmt::skip]
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
+
+#[rustfmt::skip]
 use windows::{
     core::Result,
-	System::DispatcherQueueController,
 	Win32::{
         Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM},
         UI::WindowsAndMessaging::{
-            WM_CREATE, WM_DESTROY, WM_LBUTTONDOWN, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP, WS_HSCROLL, WS_OVERLAPPEDWINDOW, WS_VSCROLL
+            WM_CREATE, WM_DESTROY, WM_LBUTTONDOWN, WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW, WS_HSCROLL, WS_OVERLAPPEDWINDOW, WS_VSCROLL
         },
     }
 };
 
 use crate::{
-	pluginwnd::PluginWnd, ui::{Boilerplate, WndBase, WndClass, Composable}, vst_host::host::Host
+	pluginwnd::PluginWnd, ui::{WndClassImpl, WndBase, WndClass}, vst_host::host::Host
 };
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
 
 pub struct AppWindow {
     handle: Option<HWND>,
-	controller: Option<DispatcherQueueController>,
 	title: Option<String>,
 	host: Rc<RefCell<Host>>,
 	vst_id: Option<String>,
@@ -29,13 +29,12 @@ pub struct AppWindow {
 impl AppWindow {
     pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Box<Self>> {
 
-		let mut bp = Boilerplate::<AppWindow>::new();
+		let mut bp = WndClassImpl::<AppWindow>::new();
 
 		bp.register(&WINDOW_CLASS, "lobster.wndclass", None)?;
 
         let mut app_wnd = Box::new(Self {
             handle: None,
-			controller: None,
 			title: Some(title.to_string()),
             host: Rc::new(RefCell::new(host)),
 			vst_id: None,
@@ -43,9 +42,8 @@ impl AppWindow {
 		});
 
 		// WS_EX_OVERLAPPEDWINDOW
-		bp.create_window(&mut app_wnd, width, height, WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW, None, None)?;
+		bp.create_window(&mut app_wnd, width, height, WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
 
-		app_wnd.create_controller(app_wnd.get_handle().unwrap_or_default(), true)?;
 		app_wnd.show();
 
         Ok(app_wnd)
@@ -95,22 +93,5 @@ impl WndBase for AppWindow {
         }
 		self.def_window_proc(message, wparam, lparam)
     }
-}
-
-impl Composable for AppWindow {
-	fn set_controller(&mut self, controller: Option<DispatcherQueueController>) {
-		self.controller = controller;
-	}
-
-	fn get_controller(&self) -> Result<&DispatcherQueueController> {
-		self.controller.as_ref().ok_or(windows::core::Error::from_hresult(E_FAIL))
-	}
-}
-
-
-impl Drop for AppWindow {
-	fn drop(&mut self) {
-		_ = self.shutdown_controller(0);
-	}
 }
 
