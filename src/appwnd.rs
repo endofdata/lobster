@@ -1,21 +1,16 @@
-use std::{cell::RefCell, sync::OnceLock};
+use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 use windows::{
-    core::{Result, GUID},
+    core::Result,
     Win32::{
         Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM},
         UI::WindowsAndMessaging::{
-            WM_CREATE, WM_DESTROY, WM_LBUTTONDOWN, WS_EX_OVERLAPPEDWINDOW, WS_OVERLAPPEDWINDOW
+            WM_CREATE, WM_DESTROY, WM_LBUTTONDOWN, WS_EX_OVERLAPPEDWINDOW, WS_EX_APPWINDOW, WS_HSCROLL, WS_VSCROLL, WS_OVERLAPPEDWINDOW
         },
     },
 };
 
 use crate::{
-	plug_frame::{PlugFrame, Resizable},
-	vst_host::{
-		host::Host, plugin::Plugin, thread_check::ThreadCheck,
-		IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS
-	},
-	ui::{WndBase, WndClass, Boilerplate}
+	pluginwnd::PluginWnd, ui::{Boilerplate, WndBase, WndClass}, vst_host::host::Host
 };
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
@@ -23,10 +18,9 @@ static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
 pub struct AppWindow {
     handle: Option<HWND>,
 	title: Option<String>,
-	host: Host,
+	host: Rc<RefCell<Host>>,
 	vst_id: Option<String>,
-	plugin: Option<Plugin>,
-	resize_recursion_guard: RefCell<bool>
+	plugin_wnd: Option<Box<PluginWnd>>
 }
 
 impl AppWindow {
@@ -39,14 +33,13 @@ impl AppWindow {
         let mut app_wnd = Box::new(Self {
             handle: None,
 			title: Some(title.to_string()),
-            host,
+            host: Rc::new(RefCell::new(host)),
 			vst_id: None,
-			plugin: None,
-			resize_recursion_guard: RefCell::new(false)
+			plugin_wnd: None
 		});
 
 		// WS_EX_NOREDIRECTIONBITMAP
-		bp.create_window(&mut app_wnd, width, height, WS_OVERLAPPEDWINDOW, WS_EX_OVERLAPPEDWINDOW)?;
+		bp.create_window(&mut app_wnd, width, height, WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
 
 		app_wnd.show();
 
@@ -54,31 +47,8 @@ impl AppWindow {
     }
 
 	fn add_plugin(&mut self, library_path: &str) -> std::result::Result<String, crate::Error> {
-		let vst_id = self.host.add_plugin_library(library_path)?;
+		let vst_id = self.host.borrow_mut().add_plugin_library(library_path)?;
 		Ok(vst_id)
-	}
-
-	fn create_plugin(&self, vst_id: &str, thread_check: ThreadCheck, fx_id: Option<GUID>, category: Option<&str>) -> std::result::Result<Plugin, crate::Error> {
-		let lib = self.host.get_plugin_library(&vst_id)?;
-		let category = category.unwrap_or(VST_AUDIO_EFFECT_CLASS);
-		let audio_effect_id = fx_id.or_else(|| {
-			for info in lib.get_class_infos() {
-				if let Some(cat) = info.category {
-					if cat == category {
-						return Some(info.cid)
-					}
-				}
-			}
-			None
-		});
-
-		if audio_effect_id.is_none() {
-			Err(crate::Error::from_other("No class of category '{}' was found.", ))
-		}
-		else {
-			let plugin = lib.create_plugin(self.host.get_application(), &audio_effect_id, thread_check)?;
-			Ok(plugin)
-		}
 	}
 
 }
@@ -109,15 +79,7 @@ impl WndBase for AppWindow {
 			}
             WM_LBUTTONDOWN => {
 				if let Some(vst_id) = &self.vst_id {
-					self.create_plugin(vst_id, ThreadCheck::for_current_thread(), None, None)
-						.and_then(|mut plugin| plugin.create_view(
-							&PlugFrame::new(self).into(),
-							&self.get_handle().expect("Window should have a valid handle"))
-						.or_else(|e| Err(e.into()))
-						.and_then(|_| {
-							self.plugin = Some(plugin);
-							Ok(())
-					})).unwrap_or_else(|e| _ = self.show_error(&e));
+					self.plugin_wnd = PluginWnd::new("Plugin", 0, 0, Rc::clone(&self.host), vst_id, self.get_handle().ok()).ok();
 				};
             }
 			WM_DESTROY => {
@@ -130,28 +92,11 @@ impl WndBase for AppWindow {
     }
 }
 
-impl Resizable for AppWindow {
-	fn resize_view(&self, _view: &IPlugView, new_size: &ViewRect) -> Result<()> {
-		if *self.resize_recursion_guard.borrow() == true {
-			Ok(())
-		}
-		else {
-			*self.resize_recursion_guard.borrow_mut() = true;
 
-			let result = self.set_window_size(new_size.into());
-
-			*self.resize_recursion_guard.borrow_mut() = false;
-
-			result
-		}
-	}
-}
 
 impl Drop for AppWindow {
 	fn drop(&mut self) {
-		if let Some(plugin) = self.plugin.take() {
-			drop(plugin);
-		}
+
 	}
 }
 

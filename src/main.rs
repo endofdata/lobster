@@ -2,7 +2,8 @@ mod vst_host;
 mod appwnd;
 mod interop;
 mod error;
-mod plug_frame;
+mod frame;
+mod pluginwnd;
 mod ui;
 mod os;
 
@@ -24,10 +25,9 @@ use windows::{
     },
     UI::Composition::Compositor,
 };
-use windows_core::{ComObject, GUID};
-use windows_numerics::Vector2;
+use windows_core::GUID;
 
-use crate::vst_host::{host::Host, IPlugFrame};
+use crate::vst_host::host::Host;
 
 // Yamaha Steinberg USB ASIO
 const ASIO_DEVICE_CLSID : GUID = GUID {
@@ -58,7 +58,7 @@ fn main() -> std::result::Result<(), crate::Error> {
 		// root.SetRelativeSizeAdjustment(Vector2::new(1.0, 1.0))?;
 
 		let host = Host::new(&ASIO_DEVICE_CLSID, "Lobster")?;
-		let window = AppWindow::new("VST Host", 800, 600, host)?;
+		let _window = AppWindow::new("VST Host", 800, 600, host)?;
 
 		// let target = window.create_window_target(&compositor, false)?;
 		// target.SetRoot(&root)?;

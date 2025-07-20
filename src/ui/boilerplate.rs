@@ -2,6 +2,7 @@ use std::{
 	marker::PhantomData, sync::OnceLock
 };
 
+use windows::Win32::UI::WindowsAndMessaging::HMENU;
 #[rustfmt::skip]
 use windows::{
 	core::{Interface, Error, Result, HSTRING, PCWSTR},
@@ -158,7 +159,10 @@ pub trait WndClass {
 	type WndType: WndBase;
 
 	fn register(&mut self, once: &'static OnceLock<Result<u16>>, class_name: &str, instance: Option<HINSTANCE>) -> Result<u16>;
-	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE) -> Result<()>;
+
+	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE,
+		parent: Option<HWND>, menu: Option<HMENU>) -> Result<()>;
+
 	unsafe extern "system" fn wnd_proc(handle: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
 }
 
@@ -223,7 +227,7 @@ impl<W: WndBase> WndClass for Boilerplate<W> {
 		}).clone()
 	}
 
-	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE) -> Result<()> {
+	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE, parent: Option<HWND>, menu: Option<HMENU>) -> Result<()> {
 		self.atom.ok_or_else(|| Error::from_hresult(E_FAIL))
 		.and_then(|atom| {
 			Self::adjust_window_size(width, height, style, ex_style)
@@ -242,8 +246,8 @@ impl<W: WndBase> WndClass for Boilerplate<W> {
 						CW_USEDEFAULT,
 						adjusted_width as i32,
 						adjusted_height as i32,
-						None,
-						None,
+						parent,
+						menu,
 						self.instance,
 						Some(outer as *mut W as _),
 					)
@@ -260,15 +264,15 @@ impl<W: WndBase> WndClass for Boilerplate<W> {
 		unsafe {
 			if message == WM_NCCREATE {
 				let create_struct = lparam.0 as *const CREATESTRUCTW;
-				let app_wnd = (*create_struct).lpCreateParams as *mut Self::WndType;
+				let outer = (*create_struct).lpCreateParams as *mut Self::WndType;
 
-				(*app_wnd).set_handle(Some(handle));
-				SetWindowLongPtrW(handle, GWLP_USERDATA, app_wnd.addr().try_into()
+				(*outer).set_handle(Some(handle));
+				SetWindowLongPtrW(handle, GWLP_USERDATA, outer.addr().try_into()
 					.expect("Window address should fit into isize"));
 			} else {
-				let app_wnd = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self::WndType;
-				if app_wnd != std::ptr::null_mut() {
-					return (*app_wnd).on_message(message, wparam, lparam);
+				let outer = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self::WndType;
+				if outer != std::ptr::null_mut() {
+					return (*outer).on_message(message, wparam, lparam);
 				}
 			}
 			DefWindowProcW(handle, message, wparam, lparam)
