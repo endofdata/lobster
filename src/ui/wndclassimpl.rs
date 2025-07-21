@@ -37,18 +37,29 @@ impl<W> WndClassImpl<W> {
 impl<W: WndBase> WndClass for WndClassImpl<W> {
 	type WndType = W;
 
-	fn register(&mut self, once: &'static OnceLock<Result<u16>>, class_name: &str, instance: Option<HINSTANCE>) -> Result<u16> {
+	fn register(&mut self, once: &'static OnceLock<Result<u16>>, class_name: &str, instance: Option<HINSTANCE>) -> Result<()> {
+		self.register_with_init(once, class_name, instance, &|_| Ok(()))
+	}
+
+	fn register_with_init(&mut self,
+		once: &'static OnceLock<Result<u16>>,
+		class_name: &str,
+		instance: Option<HINSTANCE>,
+		init: &dyn Fn(&mut WNDCLASSW) -> Result<()>) -> Result<()> {
 		once.get_or_init(|| {
 			let mut class_name_w = [0u16; 258];
 			StrConv::str_to_slice_w(class_name, &mut class_name_w, true);
 
-			let class = WNDCLASSW {
+			let mut class = WNDCLASSW {
 				hCursor: unsafe { LoadCursorW(None, IDC_ARROW).ok().expect("Windows should provide the IDC_ARROW cursor") },
 				hInstance: instance.unwrap_or_else(|| unsafe { GetModuleHandleW(None) }.expect("GetModuleHandleW(None) should not fail").into() ),
 				lpszClassName: PCWSTR(class_name_w.as_ptr()),
 				lpfnWndProc: Some(Self::wnd_proc),
 				..Default::default()
 			};
+
+			(*init)(&mut class)?;
+
 			match unsafe { RegisterClassW(&class) } {
 				0  => Err(Error::from_win32()),
 				atom => {
@@ -57,7 +68,8 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 					Ok(atom)
 				}
 			}
-		}).clone()
+		});
+		Ok(())
 	}
 
 	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE, parent: Option<HWND>, menu: Option<HMENU>) -> Result<()> {
@@ -95,17 +107,20 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 
 	unsafe extern "system" fn wnd_proc(handle: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
 		unsafe {
-			if message == WM_NCCREATE {
-				let create_struct = lparam.0 as *const CREATESTRUCTW;
-				let outer = (*create_struct).lpCreateParams as *mut Self::WndType;
+			match message {
+				WM_NCCREATE => {
+					let create_struct = lparam.0 as *const CREATESTRUCTW;
+					let outer = (*create_struct).lpCreateParams as *mut Self::WndType;
 
-				(*outer).set_handle(Some(handle));
-				SetWindowLongPtrW(handle, GWLP_USERDATA, outer.addr().try_into()
-					.expect("Window address should fit into isize"));
-			} else {
-				let outer = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self::WndType;
-				if outer != std::ptr::null_mut() {
-					return (*outer).on_message(message, wparam, lparam);
+					(*outer).set_handle(Some(handle));
+					SetWindowLongPtrW(handle, GWLP_USERDATA, outer.addr().try_into()
+						.expect("Window address should fit into isize"));
+				}
+				_ => {
+					let outer = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self::WndType;
+					if outer != std::ptr::null_mut() {
+						return (*outer).on_message(message, wparam, lparam);
+					}
 				}
 			}
 			DefWindowProcW(handle, message, wparam, lparam)
