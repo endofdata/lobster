@@ -10,6 +10,7 @@ pub use self::wndclass::WndClass as WndClass;
 use windows::{
 	Win32::{
 		Foundation::{E_INVALIDARG, RECT},
+		Graphics::Gdi::{GetStockObject, GET_STOCK_OBJECT_FLAGS, HBRUSH},
 		UI::WindowsAndMessaging::{AdjustWindowRectEx, DispatchMessageW, GetMessageW, TranslateMessage,
 			MSG, WINDOW_EX_STYLE, WINDOW_STYLE
 		}
@@ -46,4 +47,9 @@ pub fn run_message_loop() {
 			DispatchMessageW(&msg);
 		}
 	}
+}
+
+#[allow(dead_code)]
+pub fn get_stock_brush(flags: GET_STOCK_OBJECT_FLAGS) -> HBRUSH {
+	unsafe { HBRUSH(GetStockObject(flags).0) }
 }

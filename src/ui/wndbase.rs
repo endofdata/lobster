@@ -7,8 +7,8 @@ use windows::{
 		UI::WindowsAndMessaging::{
 			AdjustWindowRectEx, DefWindowProcW, GetClientRect, GetWindowInfo, GetWindowTextLengthW,
 			GetWindowTextW, MessageBoxW, PostQuitMessage, SetWindowPos, ShowWindow,
-			HWND_TOP, MB_ICONWARNING, MESSAGEBOX_RESULT, MESSAGEBOX_STYLE,
-			SWP_NOACTIVATE, SWP_NOCOPYBITS, SWP_NOMOVE, SW_SHOW, WINDOWINFO
+			MESSAGEBOX_RESULT, MESSAGEBOX_STYLE, WINDOWINFO,
+			HWND_TOP, MB_ICONWARNING, SWP_NOACTIVATE, SWP_NOCOPYBITS, SWP_NOMOVE, SW_SHOW, SW_HIDE
 		}
 	}
 };
@@ -21,6 +21,12 @@ pub trait WndBase {
 	fn show(&self) {
 		if let Ok(handle) = self.get_handle() {
 			unsafe { _ = ShowWindow(handle, SW_SHOW) };
+		}
+	}
+
+	fn hide(&self) {
+		if let Ok(handle) = self.get_handle() {
+			unsafe { _ = ShowWindow(handle, SW_HIDE) };
 		}
 	}
 
