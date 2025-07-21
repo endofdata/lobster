@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
 use windows::{
-	core::Result, System::DispatcherQueueController, Win32::{Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM}, UI::WindowsAndMessaging::{WM_CREATE, WM_DESTROY, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW, WS_SYSMENU}}
+	core::Result, Win32::{Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM}, UI::WindowsAndMessaging::{WM_CLOSE, WM_CREATE, WM_DESTROY, WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW}}
 };
 use windows_core::GUID;
 
@@ -35,7 +35,7 @@ impl PluginWnd {
 		});
 
 		// WS_EX_NOREDIRECTIONBITMAP
-		bp.create_window(&mut plugin_wnd, width, height, WS_CHILD | WS_BORDER | WS_CAPTION | WS_SYSMENU, WS_EX_TOOLWINDOW, parent, None)?;
+		bp.create_window(&mut plugin_wnd, width, height, WS_OVERLAPPEDWINDOW, WS_EX_TOOLWINDOW, parent, None)?;
 
 		plugin_wnd.show();
 
@@ -93,7 +93,14 @@ impl WndBase for PluginWnd {
 						Ok(())
 				})).unwrap_or_else(|e| _ = self.show_error(&e));
             }
+			WM_CLOSE => {
+				self.hide();
+				return LRESULT(0);
+			}
 			WM_DESTROY => {
+				if let Some(plugin) = self.plugin.take() {
+					drop(plugin);
+				}
 				return LRESULT(0);
             }
 			_ => {}
