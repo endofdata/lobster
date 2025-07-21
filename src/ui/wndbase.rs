@@ -70,7 +70,7 @@ pub trait WndBase {
 	}
 
 	#[allow(dead_code)]
-	fn get_window_size(&self) -> Result<SizeInt32> {
+	fn get_client_size(&self) -> Result<SizeInt32> {
 		let handle = self.get_handle()?;
 		unsafe {
 			let mut rect = RECT::default();
@@ -84,7 +84,7 @@ pub trait WndBase {
 		}
 	}
 
-	fn set_window_size(&self, new_size: SizeInt32) -> Result<()> {
+	fn set_client_size(&self, new_size: SizeInt32) -> Result<()> {
 		let mut client_rect = RECT { left: 0, top: 0, right: new_size.Width, bottom: new_size.Height};
 		self.adjust_window_rect(&mut client_rect).and_then(|_| {
 		self.get_handle().and_then(|handle|

@@ -117,7 +117,7 @@ impl Resizable for PluginWnd {
 		else {
 			*self.resize_recursion_guard.borrow_mut() = true;
 
-			let result = self.set_window_size(new_size.into());
+			let result = self.set_client_size(new_size.into());
 
 			*self.resize_recursion_guard.borrow_mut() = false;
 
