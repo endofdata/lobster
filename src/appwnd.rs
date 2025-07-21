@@ -1,6 +1,7 @@
 #[rustfmt::skip]
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
+use windows::Win32::Graphics::Gdi::GRAY_BRUSH;
 #[rustfmt::skip]
 use windows::{
     core::Result,
@@ -13,7 +14,7 @@ use windows::{
 };
 
 use crate::{
-	pluginwnd::PluginWnd, ui::{WndClassImpl, WndBase, WndClass}, vst_host::host::Host
+	pluginwnd::PluginWnd, ui::{WndClassImpl, WndBase, WndClass}, ui, vst_host::host::Host
 };
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
@@ -29,9 +30,12 @@ pub struct AppWnd {
 impl AppWnd {
     pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Box<Self>> {
 
-		let mut bp = WndClassImpl::<AppWnd>::new();
+		let mut class_impl = WndClassImpl::<AppWnd>::new();
 
-		bp.register(&WINDOW_CLASS, "lobster.wndclass", None)?;
+		class_impl.register_with_init(&WINDOW_CLASS, "lobster.wndclass", None, &|class| {
+			class.hbrBackground = ui::get_stock_brush(GRAY_BRUSH);
+			Ok(())
+		})?;
 
         let mut app_wnd = Box::new(Self {
             handle: None,
@@ -42,7 +46,8 @@ impl AppWnd {
 		});
 
 		// WS_EX_OVERLAPPEDWINDOW
-		bp.create_window(&mut app_wnd, width, height, WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
+		class_impl.create_window(&mut app_wnd, width, height,
+			WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
 
 		app_wnd.show();
 
