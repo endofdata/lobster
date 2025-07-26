@@ -19,27 +19,27 @@ pub struct PluginWnd {
 }
 
 impl PluginWnd {
-    pub fn new(title: &str, width: u32, height: u32, host: Rc<RefCell<Host>>, vst_id: &str, parent: Option<HWND>) -> Result<Box<Self>> {
+    pub fn new(title: &str, width: u32, height: u32, host: Rc<RefCell<Host>>, vst_id: &str, parent: Option<HWND>) -> Result<Rc<RefCell<Self>>> {
 
-		let mut bp = WndClassImpl::<PluginWnd>::new();
+		let mut class_impl = WndClassImpl::<PluginWnd>::new();
 
-		bp.register(&WINDOW_CLASS, "plugin.wndclass", None)?;
+		class_impl.register(&WINDOW_CLASS, "plugin.wndclass", None)?;
 
-        let mut plugin_wnd = Box::new(Self {
+        let plugin_wnd = Self {
             handle: None,
 			title: Some(title.to_string()),
             host,
 			vst_id: vst_id.to_string(),
 			plugin: None,
 			resize_recursion_guard: RefCell::new(false)
-		});
+		};
 
 		// WS_EX_NOREDIRECTIONBITMAP
-		bp.create_window(&mut plugin_wnd, width, height, WS_OVERLAPPEDWINDOW, WS_EX_TOOLWINDOW, parent, None)?;
+		let rc = class_impl.create_window(plugin_wnd, width, height, WS_OVERLAPPEDWINDOW, WS_EX_TOOLWINDOW, parent, None)?;
 
-		plugin_wnd.show();
+		rc.borrow().show();
 
-        Ok(plugin_wnd)
+        Ok(rc)
     }
 
 	fn create_plugin(&self, vst_id: &str, thread_check: ThreadCheck, fx_id: Option<GUID>, category: Option<&str>) -> std::result::Result<Plugin, crate::Error> {
@@ -80,7 +80,17 @@ impl WndBase for PluginWnd {
 		self.title.as_deref().ok_or(windows::core::Error::from_hresult(E_FAIL))
 	}
 
- 	fn on_message(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+ 	fn on_message(&self, message: u32, _wparam: WPARAM, _lparam: LPARAM) -> Option<LRESULT> {
+		match message {
+			WM_CLOSE => {
+				self.hide();
+				Some(LRESULT(0))
+			}
+			_ => None
+		}
+	}
+
+ 	fn on_message_mut(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
         match message {
 			WM_CREATE => {
 				self.create_plugin(&self.vst_id, ThreadCheck::for_current_thread(), None, None)
@@ -92,20 +102,19 @@ impl WndBase for PluginWnd {
 						self.plugin = Some(plugin);
 						Ok(())
 				})).unwrap_or_else(|e| _ = self.show_error(&e));
-            }
-			WM_CLOSE => {
-				self.hide();
-				return LRESULT(0);
-			}
+				Some(LRESULT(0))
+            },
+
 			WM_DESTROY => {
 				if let Some(plugin) = self.plugin.take() {
 					drop(plugin);
 				}
-				return LRESULT(0);
-            }
-			_ => {}
+				Some(LRESULT(0))
+            },
+
+			_ => self.on_message(message, wparam, lparam)
         }
-		self.def_window_proc(message, wparam, lparam)
+
     }
 }
 

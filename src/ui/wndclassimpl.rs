@@ -1,16 +1,20 @@
 use std::{
-	marker::PhantomData, sync::OnceLock
+	cell::RefCell, marker::PhantomData, rc::Rc, sync::OnceLock
 };
 
 #[rustfmt::skip]
 use windows::{
 	core::{Error, Result, HSTRING, PCWSTR},
 	Win32::{
-		Foundation::{E_FAIL, E_INVALIDARG, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+		Foundation::{
+			E_FAIL, E_INVALIDARG,
+			HINSTANCE, HWND, LPARAM, LRESULT, WPARAM
+		},
 		System::LibraryLoader::GetModuleHandleW,
 		UI::WindowsAndMessaging::{
 			CreateWindowExW, DefWindowProcW, GetWindowLongPtrW, LoadCursorW, RegisterClassW, SetWindowLongPtrW,
-			CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_NCCREATE, WNDCLASSW, HMENU
+			CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY,
+			CREATESTRUCTW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, HMENU
 		}
 	}
 };
@@ -72,7 +76,7 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 		Ok(())
 	}
 
-	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE, parent: Option<HWND>, menu: Option<HMENU>) -> Result<()> {
+	fn create_window(&self, outer: Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE, parent: Option<HWND>, menu: Option<HMENU>) -> Result<Rc<RefCell<Self::WndType>>> {
 		self.atom.ok_or_else(|| Error::from_hresult(E_FAIL))
 		.and_then(|atom| {
 			super::adjust_window_size(width, height, style, ex_style)
@@ -80,12 +84,17 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 			.and_then(|(adjusted_width, adjusted_height)| {
 				let ptr_fake: *const u16 = std::ptr::without_provenance(atom as usize);
 				let class_name = PCWSTR::from_raw(ptr_fake);
-				let title = outer.get_title().unwrap_or("");
+				let title = HSTRING::from(outer.get_title().unwrap_or(""));
+				let raw_ptr = Rc::into_raw(Rc::new(RefCell::new(outer)));
+
 				unsafe {
+					Rc::increment_strong_count(raw_ptr);
+					let lpparam = Some(raw_ptr as *const std::ffi::c_void);
+
 					CreateWindowExW(
 						ex_style,
 						class_name,
-						&HSTRING::from(title),
+						&title,
 						style,
 						CW_USEDEFAULT,
 						CW_USEDEFAULT,
@@ -94,12 +103,12 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 						parent,
 						menu,
 						self.instance,
-						Some(outer as *mut W as _),
+						lpparam,
 					)
 				}
-				.and_then(|window| {
-					outer.set_handle(Some(window));
-					Ok(())
+				.and_then(|_| {
+					let rc = unsafe { Rc::from_raw(raw_ptr).clone() };
+					Ok(rc)
 				})
 			})
 		})
@@ -110,16 +119,31 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 			match message {
 				WM_NCCREATE => {
 					let create_struct = lparam.0 as *const CREATESTRUCTW;
-					let outer = (*create_struct).lpCreateParams as *mut Self::WndType;
-
-					(*outer).set_handle(Some(handle));
-					SetWindowLongPtrW(handle, GWLP_USERDATA, outer.addr().try_into()
-						.expect("Window address should fit into isize"));
+					let raw_ptr = (*create_struct).lpCreateParams as *const RefCell<Self::WndType>;
+					SetWindowLongPtrW(handle, GWLP_USERDATA, raw_ptr as isize);
+					Rc::increment_strong_count(raw_ptr);
+					let rc = Rc::from_raw(raw_ptr);
+					rc.borrow_mut().set_handle(Some(handle));
 				}
 				_ => {
-					let outer = GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Self::WndType;
-					if outer != std::ptr::null_mut() {
-						return (*outer).on_message(message, wparam, lparam);
+					let raw_ptr = GetWindowLongPtrW(handle, GWLP_USERDATA) as *const RefCell<Self::WndType>;
+					if raw_ptr != std::ptr::null_mut() {
+						Rc::increment_strong_count(raw_ptr);
+						let rc = Rc::from_raw(raw_ptr);
+						if let Ok(Some(lresult)) =
+							rc.try_borrow_mut()
+							.and_then(|mut outer_mut|
+								Ok(outer_mut.on_message_mut(message, wparam, lparam)))
+							.or_else(|_| rc.try_borrow()
+							.and_then(|outer|
+								Ok(outer.on_message(message, wparam, lparam)))) {
+
+								if message == WM_DESTROY {
+									Rc::decrement_strong_count(raw_ptr);
+									SetWindowLongPtrW(handle, GWLP_USERDATA, 0);
+								}
+								return lresult;
+						}
 					}
 				}
 			}

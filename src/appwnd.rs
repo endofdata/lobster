@@ -24,11 +24,11 @@ pub struct AppWnd {
 	title: Option<String>,
 	host: Rc<RefCell<Host>>,
 	vst_id: Option<String>,
-	plugin_wnd: Option<Box<PluginWnd>>
+	plugin_wnd: Option<Rc<RefCell<PluginWnd>>>
 }
 
 impl AppWnd {
-    pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Box<Self>> {
+    pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Rc<RefCell<Self>>> {
 
 		let mut class_impl = WndClassImpl::<AppWnd>::new();
 
@@ -37,21 +37,21 @@ impl AppWnd {
 			Ok(())
 		})?;
 
-        let mut app_wnd = Box::new(Self {
+        let app_wnd = Self {
             handle: None,
 			title: Some(title.to_string()),
             host: Rc::new(RefCell::new(host)),
 			vst_id: None,
 			plugin_wnd: None
-		});
+		};
 
 		// WS_EX_OVERLAPPEDWINDOW
-		class_impl.create_window(&mut app_wnd, width, height,
+		let rc = class_impl.create_window(app_wnd, width, height,
 			WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
 
-		app_wnd.show();
+		rc.borrow().show();
 
-        Ok(app_wnd)
+        Ok(rc)
     }
 
 	fn add_plugin(&mut self, library_path: &str) -> std::result::Result<String, crate::Error> {
@@ -74,8 +74,18 @@ impl WndBase for AppWnd {
 		self.title.as_deref().ok_or(windows::core::Error::from_hresult(E_FAIL))
 	}
 
- 	fn on_message(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+ 	fn on_message(&self, message: u32, _wparam: WPARAM, _lparam: LPARAM) -> Option<LRESULT> {
         match message {
+			WM_DESTROY => {
+				Self::post_quit_message(0);
+				Some(LRESULT(0))
+            },
+			_ => None
+        }
+    }
+
+ 	fn on_message_mut(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+		match message {
 			WM_CREATE => {
 				match self.add_plugin(crate::VST_LIBRARY_PATH) {
 					Ok(vst_id) => self.vst_id = Some(vst_id),
@@ -84,19 +94,16 @@ impl WndBase for AppWnd {
 						_ = self.show_error(&e);
 					}
 				};
-			}
+				Some(LRESULT(0))
+			},
             WM_LBUTTONDOWN => {
 				if let Some(vst_id) = &self.vst_id {
 					self.plugin_wnd = PluginWnd::new("Plugin", 0, 0, Rc::clone(&self.host), vst_id, self.get_handle().ok()).ok();
 				};
-            }
-			WM_DESTROY => {
-				Self::post_quit_message(0);
-				return LRESULT(0);
-            }
-			_ => {}
-        }
-		self.def_window_proc(message, wparam, lparam)
-    }
+				Some(LRESULT(0))
+            },
+			_ => self.on_message(message, wparam, lparam)
+		}
+	}
 }
 

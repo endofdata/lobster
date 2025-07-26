@@ -16,7 +16,8 @@ use windows::{
 pub trait WndBase {
 	fn set_handle(&mut self, handle: Option<HWND>);
 	fn get_handle(&self) -> Result<HWND>;
-	fn on_message(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
+	fn on_message_mut(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT>;
+	fn on_message(&self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT>;
 
 	fn show(&self) {
 		if let Ok(handle) = self.get_handle() {

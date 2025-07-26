@@ -21,6 +21,7 @@ impl Error {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn from_windows(description: &str, e: windows::core::Error) -> Self {
 		Self {
 			description: format!("{}: {}", description, e.message()),

@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
 #[rustfmt::skip]
 use windows::{
@@ -19,8 +19,8 @@ pub trait WndClass {
 	fn register_with_init(&mut self, once: &'static OnceLock<Result<u16>>, class_name: &str,
 		instance: Option<HINSTANCE>, init: &dyn Fn(&mut WNDCLASSW) -> Result<()>) -> Result<()>;
 
-	fn create_window(&self, outer: &mut Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE,
-		parent: Option<HWND>, menu: Option<HMENU>) -> Result<()>;
+	fn create_window(&self, outer: Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE,
+		parent: Option<HWND>, menu: Option<HMENU>) -> Result<Rc<RefCell<Self::WndType>>>;
 
 	unsafe extern "system" fn wnd_proc(handle: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
 }
