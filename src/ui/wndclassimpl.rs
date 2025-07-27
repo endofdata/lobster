@@ -13,7 +13,7 @@ use windows::{
 		System::LibraryLoader::GetModuleHandleW,
 		UI::WindowsAndMessaging::{
 			CreateWindowExW, DefWindowProcW, GetWindowLongPtrW, LoadCursorW, RegisterClassW, SetWindowLongPtrW,
-			CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY,
+			CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY, WM_LBUTTONDOWN,
 			CREATESTRUCTW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, HMENU
 		}
 	}
@@ -50,13 +50,17 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 		class_name: &str,
 		instance: Option<HINSTANCE>,
 		init: &dyn Fn(&mut WNDCLASSW) -> Result<()>) -> Result<()> {
+
+		self.instance = Some(instance.unwrap_or_else(|| unsafe { GetModuleHandleW(None) }
+			.expect("GetModuleHandleW(None) should not fail").into()));
+
 		once.get_or_init(|| {
 			let mut class_name_w = [0u16; 258];
 			StrConv::str_to_slice_w(class_name, &mut class_name_w, true);
 
 			let mut class = WNDCLASSW {
 				hCursor: unsafe { LoadCursorW(None, IDC_ARROW).ok().expect("Windows should provide the IDC_ARROW cursor") },
-				hInstance: instance.unwrap_or_else(|| unsafe { GetModuleHandleW(None) }.expect("GetModuleHandleW(None) should not fail").into() ),
+				hInstance: self.instance.unwrap(),
 				lpszClassName: PCWSTR(class_name_w.as_ptr()),
 				lpfnWndProc: Some(Self::wnd_proc),
 				..Default::default()
@@ -66,14 +70,16 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 
 			match unsafe { RegisterClassW(&class) } {
 				0  => Err(Error::from_win32()),
-				atom => {
-					self.atom = Some(atom);
-					self.instance = Some(class.hInstance);
-					Ok(atom)
-				}
+				atom => Ok(atom)
 			}
-		});
-		Ok(())
+		}).as_ref()
+		.and_then(|a| {
+			self.atom = Some(*a);
+			Ok(())})
+		.or_else(|e| {
+			self.atom = None;
+			Err(e.to_owned())
+		})
 	}
 
 	fn create_window(&self, outer: Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE, parent: Option<HWND>, menu: Option<HMENU>) -> Result<Rc<RefCell<Self::WndType>>> {
