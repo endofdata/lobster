@@ -38,9 +38,9 @@ impl Error {
 
 	fn inner_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match &self.source {
-			Some(NestedError::System(hr)) => write!(f, "{}. {}", self.description, hr),
-			Some(NestedError::Vst(vst)) => write!(f, "{}. {}", self.description, vst),
-			Some(NestedError::AsioLib(asio)) => write!(f, "{}. {}", self.description, asio),
+			Some(NestedError::System(hr)) => write!(f, "{} {}", self.description, hr),
+			Some(NestedError::Vst(vst)) => write!(f, "{} {}", self.description, vst),
+			Some(NestedError::AsioLib(asio)) => write!(f, "{} {}", self.description, asio),
 			_ => write!(f, "{}", self.description)
 		}
 	}
@@ -64,7 +64,7 @@ impl std::fmt::Display for Error {
 impl From<asiolib::Error> for Error {
 	fn from(value: asiolib::Error) -> Self {
 		Error {
-			description: "ASIO lib raised an error".into(),
+			description: "ASIO lib raised an error.".into(),
 			source: Some(NestedError::AsioLib(value)),
 		}
 	}
@@ -73,7 +73,7 @@ impl From<asiolib::Error> for Error {
 impl From<crate::vst_host::Error> for Error {
 	fn from(value: crate::vst_host::Error) -> Self {
 		Error {
-			description: "VST raised an error".into(),
+			description: "VST raised an error.".into(),
 			source: Some(NestedError::Vst(value)),
 		}
 	}
@@ -82,7 +82,7 @@ impl From<crate::vst_host::Error> for Error {
 impl From<windows::core::Error> for Error {
 	fn from(value: windows::core::Error) -> Self {
 		Error {
-			description: "Windows raised an error".into(),
+			description: value.message(),
 			source: Some(NestedError::System(value.code()))
 		}
 	}
