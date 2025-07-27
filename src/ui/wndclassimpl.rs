@@ -1,5 +1,5 @@
 use std::{
-	cell::RefCell, marker::PhantomData, rc::Rc, sync::OnceLock
+	cell::RefCell, marker::PhantomData, ops::{Deref, DerefMut}, rc::Rc, sync::OnceLock
 };
 
 #[rustfmt::skip]
@@ -13,14 +13,14 @@ use windows::{
 		System::LibraryLoader::GetModuleHandleW,
 		UI::WindowsAndMessaging::{
 			CreateWindowExW, DefWindowProcW, GetWindowLongPtrW, LoadCursorW, RegisterClassW, SetWindowLongPtrW,
-			CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY, WM_LBUTTONDOWN,
+			CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY, WM_CLOSE, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_SHOWWINDOW,
 			CREATESTRUCTW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, HMENU
 		}
 	}
 };
 
 use super::{WndBase, WndClass};
-use crate::os::StrConv;
+use crate::{os::StrConv, ui::{modifiers::Position, MouseModifiers}};
 
 pub struct WndClassImpl<W> {
 	phantom: PhantomData<W>,
@@ -28,7 +28,7 @@ pub struct WndClassImpl<W> {
 	instance: Option<HINSTANCE>,
 }
 
-impl<W> WndClassImpl<W> {
+impl<W: WndBase> WndClassImpl<W> {
 	pub fn new() -> Self {
 		Self {
 			phantom: PhantomData,
@@ -36,6 +36,45 @@ impl<W> WndClassImpl<W> {
 			instance: None
 		}
 	}
+
+	fn on_message_mut(outer_mut: &mut W, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+		match message {
+			WM_CREATE => outer_mut.on_create_mut(&unsafe { *(lparam.0 as *const CREATESTRUCTW)}),
+			WM_SHOWWINDOW => {
+				if wparam.0 != 0 {
+					outer_mut.on_show_mut(lparam.0)
+				}
+				else {
+					outer_mut.on_hide_mut(lparam.0)
+				}
+			}
+			WM_LBUTTONDOWN => outer_mut.on_left_button_down_mut(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
+			WM_LBUTTONUP => outer_mut.on_left_button_up_mut(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
+			WM_CLOSE => outer_mut.on_close_mut(),
+			WM_DESTROY => outer_mut.on_destroy_mut(),
+			_ => None
+		}
+	}
+
+	fn on_message(outer: &W, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+		match message {
+			WM_CREATE => outer.on_create(&unsafe { *(lparam.0 as *const CREATESTRUCTW)}),
+			WM_SHOWWINDOW => {
+				if wparam.0 != 0 {
+					outer.on_show(lparam.0)
+				}
+				else {
+					outer.on_hide(lparam.0)
+				}
+			}
+			WM_LBUTTONDOWN => outer.on_left_button_down(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
+			WM_LBUTTONUP => outer.on_left_button_up(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
+			WM_CLOSE => outer.on_close(),
+			WM_DESTROY => outer.on_destroy(),
+			_ => None
+		}
+	}
+
 }
 
 impl<W: WndBase> WndClass for WndClassImpl<W> {
@@ -124,12 +163,15 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 		unsafe {
 			match message {
 				WM_NCCREATE => {
-					let create_struct = lparam.0 as *const CREATESTRUCTW;
-					let raw_ptr = (*create_struct).lpCreateParams as *const RefCell<Self::WndType>;
+					let create_struct = &*(lparam.0 as *const CREATESTRUCTW);
+					let raw_ptr = create_struct.lpCreateParams as *const RefCell<Self::WndType>;
 					SetWindowLongPtrW(handle, GWLP_USERDATA, raw_ptr as isize);
 					Rc::increment_strong_count(raw_ptr);
 					let rc = Rc::from_raw(raw_ptr);
-					rc.borrow_mut().set_handle(Some(handle));
+					let mut outer = rc.borrow_mut();
+
+					outer.set_handle(Some(handle));
+					return LRESULT(1);
 				}
 				_ => {
 					let raw_ptr = GetWindowLongPtrW(handle, GWLP_USERDATA) as *const RefCell<Self::WndType>;
@@ -139,11 +181,10 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 						if let Ok(Some(lresult)) =
 							rc.try_borrow_mut()
 							.and_then(|mut outer_mut|
-								Ok(outer_mut.on_message_mut(message, wparam, lparam)))
+								Ok(Self::on_message_mut(outer_mut.deref_mut(), message, wparam, lparam)))
 							.or_else(|_| rc.try_borrow()
 							.and_then(|outer|
-								Ok(outer.on_message(message, wparam, lparam)))) {
-
+								Ok(Self::on_message(outer.deref(), message, wparam, lparam)))) {
 								if message == WM_DESTROY {
 									Rc::decrement_strong_count(raw_ptr);
 									SetWindowLongPtrW(handle, GWLP_USERDATA, 0);
@@ -151,9 +192,9 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 								return lresult;
 						}
 					}
+					DefWindowProcW(handle, message, wparam, lparam)
 				}
 			}
-			DefWindowProcW(handle, message, wparam, lparam)
 		}
 	}
 }

@@ -1,10 +1,12 @@
 mod wndclassimpl;
 mod wndbase;
 mod wndclass;
+mod modifiers;
 
 pub use self::wndclassimpl::WndClassImpl as WndClassImpl;
 pub use self::wndbase::WndBase as WndBase;
 pub use self::wndclass::WndClass as WndClass;
+pub use self::modifiers::{MouseModifierFlags as MouseModifierFlags, MouseModifiers as MouseModifiers, Position as Position};
 
 #[rustfmt::skip]
 use windows::{

@@ -1,20 +1,21 @@
 #[rustfmt::skip]
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
-use windows::Win32::Graphics::Gdi::GRAY_BRUSH;
 #[rustfmt::skip]
 use windows::{
     core::Result,
 	Win32::{
-        Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{E_FAIL, HWND, LRESULT},
+		Graphics::Gdi::GRAY_BRUSH,
         UI::WindowsAndMessaging::{
-            WM_CREATE, WM_DESTROY, WM_LBUTTONDOWN, WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW, WS_HSCROLL, WS_OVERLAPPEDWINDOW, WS_VSCROLL
+            WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW, WS_HSCROLL, WS_OVERLAPPEDWINDOW, WS_VSCROLL,
+			CREATESTRUCTW
         },
     }
 };
 
 use crate::{
-	pluginwnd::PluginWnd, ui::{WndClassImpl, WndBase, WndClass}, ui, vst_host::host::Host
+	pluginwnd::PluginWnd, ui::{self, Position, WndBase, WndClass, WndClassImpl}, vst_host::host::Host
 };
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
@@ -45,7 +46,6 @@ impl AppWnd {
 			plugin_wnd: None
 		};
 
-		// WS_EX_OVERLAPPEDWINDOW
 		let rc = class_impl.create_window(app_wnd, width, height,
 			WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
 
@@ -74,35 +74,31 @@ impl WndBase for AppWnd {
 		self.title.as_deref().ok_or(windows::core::Error::from_hresult(E_FAIL))
 	}
 
- 	fn on_message(&self, message: u32, _wparam: WPARAM, _lparam: LPARAM) -> Option<LRESULT> {
-        match message {
-			WM_DESTROY => {
-				Self::post_quit_message(0);
-				Some(LRESULT(0))
-            },
-			_ => None
-        }
+ 	fn on_destroy(&self) -> Option<LRESULT> {
+		Self::post_quit_message(0);
+		Some(LRESULT(0))
     }
 
- 	fn on_message_mut(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
-		match message {
-			WM_CREATE => {
-				match self.add_plugin(crate::VST_LIBRARY_PATH) {
-					Ok(vst_id) => self.vst_id = Some(vst_id),
-					Err(e) => {
-						self.vst_id = None;
-						_ = self.show_error(&e);
-					}
-				};
-				Some(LRESULT(0))
-			},
-            WM_LBUTTONDOWN => {
-				if let Some(vst_id) = &self.vst_id {
-					self.plugin_wnd = PluginWnd::new("Plugin", 0, 0, Rc::clone(&self.host), vst_id, self.get_handle().ok()).ok();
-				};
-				Some(LRESULT(0))
-            },
-			_ => self.on_message(message, wparam, lparam)
+ 	fn on_create_mut(&mut self, _: &CREATESTRUCTW) -> Option<LRESULT> {
+		match self.add_plugin(crate::VST_LIBRARY_PATH) {
+			Ok(vst_id) => self.vst_id = Some(vst_id),
+			Err(e) => {
+				self.vst_id = None;
+				_ = self.show_error(&e);
+			}
+		};
+		Some(LRESULT(0))
+	}
+
+	fn on_left_button_up_mut(&mut self, modifiers: &ui::MouseModifiers, _position: &Position) -> Option<LRESULT> {
+		if modifiers.has(ui::MouseModifierFlags::Control) {
+			if let Some(vst_id) = &self.vst_id {
+				self.plugin_wnd = PluginWnd::new("Plugin", 0, 0, Rc::clone(&self.host), vst_id, self.get_handle().ok()).ok();
+			};
+			Some(LRESULT(0))
+		}
+		else {
+			None
 		}
 	}
 }

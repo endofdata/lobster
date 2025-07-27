@@ -3,21 +3,78 @@ use windows::{
 	core::{Result, Error, HSTRING},
 	Graphics::SizeInt32,
 	Win32::{
-		Foundation::{E_FAIL, HWND, LPARAM, LRESULT, RECT, WPARAM},
+		Foundation::{E_FAIL, HWND, LRESULT, RECT},
 		UI::WindowsAndMessaging::{
-			AdjustWindowRectEx, DefWindowProcW, GetClientRect, GetWindowInfo, GetWindowTextLengthW,
+			AdjustWindowRectEx, GetClientRect, GetWindowInfo, GetWindowTextLengthW,
 			GetWindowTextW, MessageBoxW, PostQuitMessage, SetWindowPos, ShowWindow,
-			MESSAGEBOX_RESULT, MESSAGEBOX_STYLE, WINDOWINFO,
+			MESSAGEBOX_RESULT, MESSAGEBOX_STYLE, WINDOWINFO, CREATESTRUCTW,
 			HWND_TOP, MB_ICONWARNING, SWP_NOACTIVATE, SWP_NOCOPYBITS, SWP_NOMOVE, SW_SHOW, SW_HIDE
 		}
 	}
 };
 
+use crate::ui::{modifiers::Position, MouseModifiers};
+
+
 pub trait WndBase {
 	fn set_handle(&mut self, handle: Option<HWND>);
 	fn get_handle(&self) -> Result<HWND>;
-	fn on_message_mut(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT>;
-	fn on_message(&self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT>;
+
+	fn on_create_mut(&mut self, create_struct: &CREATESTRUCTW) -> Option<LRESULT> {
+		self.on_create(create_struct)
+	}
+
+	fn on_create(&self, _create_struct: &CREATESTRUCTW) -> Option<LRESULT> {
+		None
+	}
+
+	fn on_show_mut(&mut self, sw_flags: isize) -> Option<LRESULT> {
+		self.on_show(sw_flags)
+	}
+
+	fn on_show(&self, _sw_flags: isize) -> Option<LRESULT> {
+		None
+	}
+
+	fn on_hide_mut(&mut self, sw_flags: isize) -> Option<LRESULT> {
+		self.on_hide(sw_flags)
+	}
+
+	fn on_hide(&self, _sw_flags: isize) -> Option<LRESULT> {
+		None
+	}
+
+	fn on_left_button_down_mut(&mut self, modifiers: &MouseModifiers, position: &Position) -> Option<LRESULT> {
+		self.on_left_button_down(modifiers, position)
+	}
+
+	fn on_left_button_down(&self, _modifiers: &MouseModifiers, _position: &Position) -> Option<LRESULT> {
+		None
+	}
+
+	fn on_left_button_up_mut(&mut self, modifiers: &MouseModifiers, position: &Position) -> Option<LRESULT> {
+		self.on_left_button_up(modifiers, position)
+	}
+
+	fn on_left_button_up(&self, _modifiers: &MouseModifiers, _position: &Position) -> Option<LRESULT> {
+		None
+	}
+
+	fn on_close_mut(&mut self) -> Option<LRESULT> {
+		self.on_close()
+	}
+
+	fn on_close(&self) -> Option<LRESULT> {
+		None
+	}
+
+	fn on_destroy_mut(&mut self) -> Option<LRESULT> {
+		self.on_destroy()
+	}
+
+	fn on_destroy(&self) -> Option<LRESULT> {
+		None
+	}
 
 	fn show(&self) {
 		if let Ok(handle) = self.get_handle() {
@@ -108,16 +165,7 @@ pub trait WndBase {
 		unsafe { AdjustWindowRectEx (client_rect, info.dwStyle, false, info.dwExStyle) }
 	}
 
-	fn def_window_proc(&self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-		unsafe { DefWindowProcW(self.get_handle().unwrap_or_default(), message, wparam, lparam) }
-	}
-
 	fn post_quit_message(exit_code: i32) {
 		unsafe { PostQuitMessage(exit_code) };
-	}
-
-	#[allow(dead_code)]
-	fn as_xy(lparam: LPARAM) -> (isize, isize) {
-		(lparam.0 & 0xffff, (lparam.0 >> 16) & 0xffff)
 	}
 }

@@ -1,11 +1,22 @@
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
+#[rustfmt::skip]
 use windows::{
-	core::Result, Win32::{Foundation::{E_FAIL, HWND, LPARAM, LRESULT, WPARAM}, UI::WindowsAndMessaging::{WM_CLOSE, WM_CREATE, WM_DESTROY, WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW}}
+	core::{Result, GUID},
+	Win32::{
+		Foundation::{E_FAIL, HWND, LRESULT},
+		UI::WindowsAndMessaging::{
+			CREATESTRUCTW,
+			WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW
+		}
+	}
 };
-use windows_core::GUID;
-
-use crate::{frame::{Frame, Resizable}, ui::{WndClassImpl, WndBase, WndClass}, vst_host::{host::Host, plugin::Plugin, thread_check::ThreadCheck, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS}};
+#[rustfmt::skip]
+use crate::{
+	frame::{Frame, Resizable},
+	ui::{WndClassImpl, WndBase, WndClass},
+	vst_host::{host::Host, plugin::Plugin, thread_check::ThreadCheck, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS}
+};
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
 
@@ -61,6 +72,7 @@ impl PluginWnd {
 			Err(crate::Error::from_other("No class of category '{}' was found.", ))
 		}
 		else {
+			println!("Creating plugin");
 			let plugin = lib.create_plugin(self.host.borrow().get_application(), &audio_effect_id, thread_check)?;
 			Ok(plugin)
 		}
@@ -80,42 +92,30 @@ impl WndBase for PluginWnd {
 		self.title.as_deref().ok_or(windows::core::Error::from_hresult(E_FAIL))
 	}
 
- 	fn on_message(&self, message: u32, _wparam: WPARAM, _lparam: LPARAM) -> Option<LRESULT> {
-		match message {
-			WM_CLOSE => {
-				self.hide();
-				Some(LRESULT(0))
-			}
-			_ => None
-		}
+ 	fn on_close(&self) -> Option<LRESULT> {
+		self.hide();
+		Some(LRESULT(0))
 	}
 
- 	fn on_message_mut(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
-        match message {
-			WM_CREATE => {
-				self.create_plugin(&self.vst_id, ThreadCheck::for_current_thread(), None, None)
-					.and_then(|mut plugin| plugin.create_view(
-						&Frame::new(self).into(),
-						&self.get_handle().expect("Window should have a valid handle"))
-					.or_else(|e| Err(e.into()))
-					.and_then(|_| {
-						self.plugin = Some(plugin);
-						Ok(())
-				})).unwrap_or_else(|e| _ = self.show_error(&e));
-				Some(LRESULT(0))
-            },
+ 	fn on_create_mut(&mut self, _: &CREATESTRUCTW) -> Option<LRESULT> {
+		self.create_plugin(&self.vst_id, ThreadCheck::for_current_thread(), None, None)
+			.and_then(|mut plugin| plugin.create_view(
+				&Frame::new(self).into(),
+				&self.get_handle().expect("Window should have a valid handle"))
+			.or_else(|e| Err(e.into()))
+			.and_then(|_| {
+				self.plugin = Some(plugin);
+				Ok(())
+		})).unwrap_or_else(|e| _ = self.show_error(&e));
+		Some(LRESULT(0))
+	}
 
-			WM_DESTROY => {
-				if let Some(plugin) = self.plugin.take() {
-					drop(plugin);
-				}
-				Some(LRESULT(0))
-            },
-
-			_ => self.on_message(message, wparam, lparam)
-        }
-
-    }
+	fn on_destroy_mut(&mut self) -> Option<LRESULT> {
+		if let Some(plugin) = self.plugin.take() {
+			drop(plugin);
+		}
+		Some(LRESULT(0))
+	}
 }
 
 impl Resizable for PluginWnd {
