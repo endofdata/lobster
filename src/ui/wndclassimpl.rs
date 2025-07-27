@@ -7,24 +7,25 @@ use windows::{
 	core::{Error, Result, HSTRING, PCWSTR},
 	Win32::{
 		Foundation::{
-			E_FAIL, E_INVALIDARG,
+			E_UNEXPECTED, E_INVALIDARG,
 			HINSTANCE, HWND, LPARAM, LRESULT, WPARAM
 		},
 		System::LibraryLoader::GetModuleHandleW,
 		UI::WindowsAndMessaging::{
 			CreateWindowExW, DefWindowProcW, GetWindowLongPtrW, LoadCursorW, RegisterClassW, SetWindowLongPtrW,
-			CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY, WM_CLOSE, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_SHOWWINDOW,
+			GWLP_USERDATA, IDC_ARROW, WM_NCCREATE, WM_DESTROY, WM_CLOSE, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_SHOWWINDOW,
 			CREATESTRUCTW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, HMENU
 		}
 	}
 };
 
 use super::{WndBase, WndClass};
-use crate::{os::StrConv, ui::{modifiers::Position, MouseModifiers}};
+use crate::{os::StrConv, ui::Area};
 
 pub struct WndClassImpl<W> {
 	phantom: PhantomData<W>,
 	atom: Option<u16>,
+	class_name: Option<String>,
 	instance: Option<HINSTANCE>,
 }
 
@@ -33,7 +34,17 @@ impl<W: WndBase> WndClassImpl<W> {
 		Self {
 			phantom: PhantomData,
 			atom: None,
+			class_name: None,
 			instance: None
+		}
+	}
+
+	pub fn for_class(class_name: &str, instance: Option<HINSTANCE>) -> Self {
+		Self {
+			phantom: PhantomData,
+			atom: None,
+			class_name: Some(class_name.to_string()),
+			instance
 		}
 	}
 
@@ -75,6 +86,32 @@ impl<W: WndBase> WndClassImpl<W> {
 		}
 	}
 
+	fn get_instance_or_default(instance: Option<HINSTANCE>) -> HINSTANCE {
+		instance.unwrap_or_else(|| unsafe { GetModuleHandleW(None) }
+			.expect("GetModuleHandleW(None) should not fail").into())
+	}
+
+	fn get_classname_pcwstr(&self, buffer: &mut [u16; 258]) -> Result<PCWSTR> {
+		if let Some(atom) = self.atom {
+			Ok(Self::classname_from_atom(atom))
+		}
+		else if let Some(name) = &self.class_name {
+			Ok(Self::classname_from_str(name, buffer))
+		}
+		else {
+			Err(Error::from_hresult(E_UNEXPECTED))
+		}
+	}
+
+	fn classname_from_str(class_name: &str, buffer: &mut [u16; 258]) -> PCWSTR {
+		StrConv::str_to_slice_w(class_name, buffer, true);
+		PCWSTR(buffer.as_ptr())
+	}
+
+	fn classname_from_atom(atom: u16) -> PCWSTR {
+		let ptr_fake: *const u16 = std::ptr::without_provenance(atom as usize);
+		PCWSTR::from_raw(ptr_fake)
+	}
 }
 
 impl<W: WndBase> WndClass for WndClassImpl<W> {
@@ -90,17 +127,19 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 		instance: Option<HINSTANCE>,
 		init: &dyn Fn(&mut WNDCLASSW) -> Result<()>) -> Result<()> {
 
-		self.instance = Some(instance.unwrap_or_else(|| unsafe { GetModuleHandleW(None) }
-			.expect("GetModuleHandleW(None) should not fail").into()));
+		if self.instance.is_none() {
+			self.instance = Some(Self::get_instance_or_default(instance));
+		}
+		if self.atom.is_none() {
+			self.class_name = Some(class_name.to_string());
+		}
 
 		once.get_or_init(|| {
-			let mut class_name_w = [0u16; 258];
-			StrConv::str_to_slice_w(class_name, &mut class_name_w, true);
-
+			let mut buffer = [0u16; 258];
 			let mut class = WNDCLASSW {
 				hCursor: unsafe { LoadCursorW(None, IDC_ARROW).ok().expect("Windows should provide the IDC_ARROW cursor") },
 				hInstance: self.instance.unwrap(),
-				lpszClassName: PCWSTR(class_name_w.as_ptr()),
+				lpszClassName: Self::classname_from_str(class_name, &mut buffer),
 				lpfnWndProc: Some(Self::wnd_proc),
 				..Default::default()
 			};
@@ -121,14 +160,19 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 		})
 	}
 
-	fn create_window(&self, outer: Self::WndType, width: u32, height: u32, style: WINDOW_STYLE, ex_style: WINDOW_EX_STYLE, parent: Option<HWND>, menu: Option<HMENU>) -> Result<Rc<RefCell<Self::WndType>>> {
-		self.atom.ok_or_else(|| Error::from_hresult(E_FAIL))
-		.and_then(|atom| {
-			super::adjust_window_size(width, height, style, ex_style)
+	fn create_window(&self,
+		outer: Self::WndType,
+		area: &Area,
+		style: WINDOW_STYLE,
+		ex_style: WINDOW_EX_STYLE,
+		parent: Option<HWND>,
+		menu: Option<HMENU>) -> Result<Rc<RefCell<Self::WndType>>> {
+		let mut buffer = [0u16; 258];
+		self.get_classname_pcwstr(&mut buffer)
+		.and_then(|class_name| {
+			super::adjust_window_size(area.get_size(), style, ex_style)
 			.or_else(|_| Err(Error::from_hresult(E_INVALIDARG)))
-			.and_then(|(adjusted_width, adjusted_height)| {
-				let ptr_fake: *const u16 = std::ptr::without_provenance(atom as usize);
-				let class_name = PCWSTR::from_raw(ptr_fake);
+			.and_then(|adjusted_size| {
 				let title = HSTRING::from(outer.get_title().unwrap_or(""));
 				let raw_ptr = Rc::into_raw(Rc::new(RefCell::new(outer)));
 
@@ -157,6 +201,15 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 				})
 			})
 		})
+	}
+
+	fn create_control(&self,
+		outer: Self::WndType,
+		area: &Area,
+		style: WINDOW_STYLE,
+		ex_style: WINDOW_EX_STYLE,
+		parent: HWND) ->  Result<Rc<RefCell<Self::WndType>>> {
+		self.create_window(outer, area, style, ex_style, Some(parent), None)
 	}
 
 	unsafe extern "system" fn wnd_proc(handle: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

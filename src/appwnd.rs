@@ -61,6 +61,16 @@ impl AppWnd {
 		Ok(vst_id)
 	}
 
+	fn create_ui(&mut self) -> std::result::Result<(), crate::Error> {
+		ListBox::new(&Area::new(0, 0, 400, 800),
+			self.get_handle().expect("AppWnd::set_handle() should have been run first"))
+		.and_then(|lb| {
+			self.fxlist = Some(lb);
+			Ok(())
+		})
+		.or_else(|e| Err(e.into()))
+	}
+
 }
 
 impl WndBase for AppWnd {
@@ -82,13 +92,20 @@ impl WndBase for AppWnd {
     }
 
  	fn on_create_mut(&mut self, _: &CREATESTRUCTW) -> Option<LRESULT> {
-		match self.add_plugin(crate::VST_LIBRARY_PATH) {
-			Ok(vst_id) => self.vst_id = Some(vst_id),
-			Err(e) => {
+		let _ = self.create_ui()
+		.and_then(|_| self.add_plugin(crate::VST_LIBRARY_PATH)
+			.and_then(|vst_id| {
+				self.vst_id = Some(vst_id);
+				Ok(())
+			})
+			.or_else(|e| {
 				self.vst_id = None;
-				_ = self.show_error(&e);
-			}
-		};
+				Err(e)
+			}))
+		.or_else(|e| {
+			_ = self.show_error(&e);
+			Err(e)
+		});
 		Some(LRESULT(0))
 	}
 
