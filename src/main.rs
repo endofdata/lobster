@@ -15,7 +15,7 @@ use windows::{
 	core::GUID
 };
 
-use crate::vst_host::host::Host;
+use crate::{ui::Vector2D, vst_host::host::Host};
 
 // Yamaha Steinberg USB ASIO
 const ASIO_DEVICE_CLSID : GUID = GUID {
@@ -34,7 +34,7 @@ fn main() -> std::result::Result<(), crate::Error> {
 	// scope to enforce cleanup before RoUninitialize
 	{
 		let host = Host::new(&ASIO_DEVICE_CLSID, "Lobster")?;
-		let _window = AppWnd::new("VST Host", 1280, 800, host)?;
+		let _window = AppWnd::new("VST Host", &Vector2D::new(1280, 800), host)?;
 
 		ui::run_message_loop();
 

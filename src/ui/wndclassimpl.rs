@@ -48,8 +48,8 @@ impl<W: WndBase> WndClassImpl<W> {
 					outer_mut.on_hide_mut(lparam.0)
 				}
 			}
-			WM_LBUTTONDOWN => outer_mut.on_left_button_down_mut(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
-			WM_LBUTTONUP => outer_mut.on_left_button_up_mut(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
+			WM_LBUTTONDOWN => outer_mut.on_left_button_down_mut(&(wparam.into()), &(lparam.into())),
+			WM_LBUTTONUP => outer_mut.on_left_button_up_mut(&(wparam.into()), &(lparam.into())),
 			WM_CLOSE => outer_mut.on_close_mut(),
 			WM_DESTROY => outer_mut.on_destroy_mut(),
 			_ => None
@@ -67,8 +67,8 @@ impl<W: WndBase> WndClassImpl<W> {
 					outer.on_hide(lparam.0)
 				}
 			}
-			WM_LBUTTONDOWN => outer.on_left_button_down(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
-			WM_LBUTTONUP => outer.on_left_button_up(&MouseModifiers::from_wparam(wparam), &Position::from_lparam(lparam)),
+			WM_LBUTTONDOWN => outer.on_left_button_down(&(wparam.into()), &(lparam.into())),
+			WM_LBUTTONUP => outer.on_left_button_up(&(wparam.into()), &(lparam.into())),
 			WM_CLOSE => outer.on_close(),
 			WM_DESTROY => outer.on_destroy(),
 			_ => None
@@ -141,10 +141,10 @@ impl<W: WndBase> WndClass for WndClassImpl<W> {
 						class_name,
 						&title,
 						style,
-						CW_USEDEFAULT,
-						CW_USEDEFAULT,
-						adjusted_width as i32,
-						adjusted_height as i32,
+						area.get_offset().get_x(),
+						area.get_offset().get_y(),
+						adjusted_size.get_x(),
+						adjusted_size.get_y(),
 						parent,
 						menu,
 						self.instance,

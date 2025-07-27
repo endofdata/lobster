@@ -13,7 +13,7 @@ use windows::{
 	}
 };
 
-use crate::ui::{modifiers::Position, MouseModifiers};
+use crate::ui::{MouseModifiers, Vector2D};
 
 
 pub trait WndBase {
@@ -44,19 +44,19 @@ pub trait WndBase {
 		None
 	}
 
-	fn on_left_button_down_mut(&mut self, modifiers: &MouseModifiers, position: &Position) -> Option<LRESULT> {
+	fn on_left_button_down_mut(&mut self, modifiers: &MouseModifiers, position: &Vector2D) -> Option<LRESULT> {
 		self.on_left_button_down(modifiers, position)
 	}
 
-	fn on_left_button_down(&self, _modifiers: &MouseModifiers, _position: &Position) -> Option<LRESULT> {
+	fn on_left_button_down(&self, _modifiers: &MouseModifiers, _position: &Vector2D) -> Option<LRESULT> {
 		None
 	}
 
-	fn on_left_button_up_mut(&mut self, modifiers: &MouseModifiers, position: &Position) -> Option<LRESULT> {
+	fn on_left_button_up_mut(&mut self, modifiers: &MouseModifiers, position: &Vector2D) -> Option<LRESULT> {
 		self.on_left_button_up(modifiers, position)
 	}
 
-	fn on_left_button_up(&self, _modifiers: &MouseModifiers, _position: &Position) -> Option<LRESULT> {
+	fn on_left_button_up(&self, _modifiers: &MouseModifiers, _position: &Vector2D) -> Option<LRESULT> {
 		None
 	}
 
@@ -95,7 +95,9 @@ pub trait WndBase {
 		.and_then(|_| Ok(info))
 	}
 
-	fn get_title(&self) -> Result<&str>;
+	fn get_title(&self) -> Result<&str> {
+		Err(Error::from_hresult(E_FAIL))
+	}
 
 	#[allow(dead_code)]
 	fn copy_title(&self) -> Result<String> {

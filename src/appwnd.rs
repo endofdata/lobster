@@ -8,14 +8,14 @@ use windows::{
         Foundation::{E_FAIL, HWND, LRESULT},
 		Graphics::Gdi::GRAY_BRUSH,
         UI::WindowsAndMessaging::{
-            WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW, WS_HSCROLL, WS_OVERLAPPEDWINDOW, WS_VSCROLL,
+            WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW, WS_HSCROLL, WS_OVERLAPPEDWINDOW, WS_VSCROLL, CW_USEDEFAULT,
 			CREATESTRUCTW
         },
     }
 };
 
 use crate::{
-	pluginwnd::PluginWnd, ui::{self, Position, WndBase, WndClass, WndClassImpl}, vst_host::host::Host
+	pluginwnd::PluginWnd, ui::{self, Area, ListBox, Vector2D, WndBase, WndClass, WndClassImpl}, vst_host::host::Host
 };
 
 static WINDOW_CLASS: OnceLock<Result<u16>> = OnceLock::new();
@@ -25,11 +25,12 @@ pub struct AppWnd {
 	title: Option<String>,
 	host: Rc<RefCell<Host>>,
 	vst_id: Option<String>,
-	plugin_wnd: Option<Rc<RefCell<PluginWnd>>>
+	plugin_wnd: Option<Rc<RefCell<PluginWnd>>>,
+	fxlist: Option<Rc<RefCell<ListBox>>>
 }
 
 impl AppWnd {
-    pub fn new(title: &str, width: u32, height: u32, host: Host) -> Result<Rc<RefCell<Self>>> {
+    pub fn new(title: &str, size: &Vector2D, host: Host) -> Result<Rc<RefCell<Self>>> {
 
 		let mut class_impl = WndClassImpl::<AppWnd>::new();
 
@@ -43,10 +44,11 @@ impl AppWnd {
 			title: Some(title.to_string()),
             host: Rc::new(RefCell::new(host)),
 			vst_id: None,
-			plugin_wnd: None
+			plugin_wnd: None,
+			fxlist: None,
 		};
 
-		let rc = class_impl.create_window(app_wnd, width, height,
+		let rc = class_impl.create_window(app_wnd, &Area::new(CW_USEDEFAULT, CW_USEDEFAULT, size.get_x(), size.get_y()),
 			WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL, WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, None, None)?;
 
 		rc.borrow().show();
@@ -90,10 +92,10 @@ impl WndBase for AppWnd {
 		Some(LRESULT(0))
 	}
 
-	fn on_left_button_up_mut(&mut self, modifiers: &ui::MouseModifiers, _position: &Position) -> Option<LRESULT> {
+	fn on_left_button_up_mut(&mut self, modifiers: &ui::MouseModifiers, _position: &Vector2D) -> Option<LRESULT> {
 		if modifiers.has(ui::MouseModifierFlags::Control) {
 			if let Some(vst_id) = &self.vst_id {
-				self.plugin_wnd = PluginWnd::new("Plugin", 0, 0, Rc::clone(&self.host), vst_id, self.get_handle().ok()).ok();
+				self.plugin_wnd = PluginWnd::new("Plugin", &Vector2D::default(), Rc::clone(&self.host), vst_id, self.get_handle().ok()).ok();
 			};
 			Some(LRESULT(0))
 		}

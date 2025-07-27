@@ -11,10 +11,11 @@ use windows::{
 		}
 	}
 };
+
 #[rustfmt::skip]
 use crate::{
 	frame::{Frame, Resizable},
-	ui::{WndClassImpl, WndBase, WndClass},
+	ui::{WndClassImpl, WndBase, WndClass,Vector2D},
 	vst_host::{host::Host, plugin::Plugin, thread_check::ThreadCheck, IPlugView, ViewRect, VST_AUDIO_EFFECT_CLASS}
 };
 
@@ -30,7 +31,7 @@ pub struct PluginWnd {
 }
 
 impl PluginWnd {
-    pub fn new(title: &str, width: u32, height: u32, host: Rc<RefCell<Host>>, vst_id: &str, parent: Option<HWND>) -> Result<Rc<RefCell<Self>>> {
+    pub fn new(title: &str, size: &Vector2D, host: Rc<RefCell<Host>>, vst_id: &str, parent: Option<HWND>) -> Result<Rc<RefCell<Self>>> {
 
 		let mut class_impl = WndClassImpl::<PluginWnd>::new();
 
@@ -45,8 +46,7 @@ impl PluginWnd {
 			resize_recursion_guard: RefCell::new(false)
 		};
 
-		// WS_EX_NOREDIRECTIONBITMAP
-		let rc = class_impl.create_window(plugin_wnd, width, height, WS_OVERLAPPEDWINDOW, WS_EX_TOOLWINDOW, parent, None)?;
+		let rc = class_impl.create_window(plugin_wnd, &size.into(), WS_OVERLAPPEDWINDOW, WS_EX_TOOLWINDOW, parent, None)?;
 
 		rc.borrow().show();
 

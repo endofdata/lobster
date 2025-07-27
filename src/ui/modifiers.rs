@@ -1,4 +1,4 @@
-use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::Foundation::WPARAM;
 
 
 /// The CTRL key is down.
@@ -33,34 +33,14 @@ pub enum MouseModifierFlags {
 }
 
 impl MouseModifiers {
-	pub fn from_wparam(wparam: WPARAM) -> Self {
-		MouseModifiers(wparam.0 as u16)
-	}
-
 	#[allow(dead_code)]
 	pub fn has(&self, flags: MouseModifierFlags) -> bool {
 		((flags as u16) & self.0) != 0
 	}
 }
 
-
-pub struct Position {
-	x: i32,
-	y: i32
-}
-
-impl Position {
-	pub fn from_lparam(lparam: LPARAM) -> Self {
-		Position { x: (lparam.0 & 0xffff) as i32, y: ((lparam.0 >> 16) & 0xffff) as i32 }
-	}
-
-	#[allow(dead_code)]
-	pub fn get_x(&self) -> i32 {
-		self.x
-	}
-
-	#[allow(dead_code)]
-	pub fn get_y(&self) -> i32 {
-		self.y
+impl From<WPARAM> for MouseModifiers {
+	fn from(value: WPARAM) -> Self {
+		MouseModifiers(value.0 as u16)
 	}
 }
